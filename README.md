@@ -6,6 +6,17 @@ its own screensaver.
 
 Built with Kotlin and Compose for TV. Package `com.dananz.window`, Android 13 (API 33) and up.
 
+![Home: the room, the clock and forecast, smart home tiles and the apps shelf](docs/home.jpg)
+
+| | |
+| --- | --- |
+| ![Quick settings](docs/quick.jpg) | ![Smart home settings](docs/smart.jpg) |
+| Quick settings: volume, Wi-Fi, picture, sound, the screensaver | Smart home: Home Assistant, Govee, Sensibo, Tuya |
+| ![Tiles on the wall](docs/tiles.jpg) | ![All apps](docs/apps.jpg) |
+| Tiles on the wall: pick, reorder and rename | All apps, with favorites on the home shelf |
+
+![Screensaver: the landscape with the clock and weather](docs/saver.jpg)
+
 ## What's in it
 
 - **Home:** the room and the view, which follow the time of day, the weather and the place you pick (New
