@@ -82,9 +82,9 @@ object Saver {
     private const val GOOGLE = "com.google.android.apps.tv.dreamx/.service.Backdrop"
     private fun me(context: Context) = ComponentName(context, Screensaver::class.java).flattenToString()
 
-    fun isPane(context: Context) = Settings.Secure.getString(context.contentResolver, "screensaver_components").orEmpty().contains(me(context).substringAfter('/'))
+    fun isWindow(context: Context) = Settings.Secure.getString(context.contentResolver, "screensaver_components").orEmpty().contains(me(context).substringAfter('/'))
 
-    fun setPane(context: Context, on: Boolean) = runCatching {
+    fun setWindow(context: Context, on: Boolean) = runCatching {
         if (context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return@runCatching
         Settings.Secure.putString(context.contentResolver, "screensaver_components", if (on) me(context) else GOOGLE)
         Settings.Secure.putInt(context.contentResolver, "screensaver_enabled", 1)

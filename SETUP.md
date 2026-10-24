@@ -27,7 +27,7 @@ look at the TV whenever a prompt might appear on it.
    Afterwards, check the Home button service is on:
    `adb -s <TV-IP>:5555 shell settings get secure enabled_accessibility_services` lists
    com.dananz.window/com.dananz.window.HomeButton. Take a screenshot
-   (`adb exec-out screencap -p > pane.png`), look at it, and confirm Window is on screen.
+   (`adb exec-out screencap -p > window.png`), look at it, and confirm Window is on screen.
 
 4. Make it the home screen. Ask me first: this switches Google TV's own home and setup wizard off (they
    stay installed; scripts/tv-restore.sh brings them back). Then run `scripts/tv-default.sh`. If it stops

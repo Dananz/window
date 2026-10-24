@@ -161,7 +161,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
 
     fun show() {
         open = true; page = null; sub = null; focus = "sec-home"
-        saverOn = Saver.isPane(context)
+        saverOn = Saver.isWindow(context)
         after = Saver.afterMinutes(context)
         scope.launch { Ha.check() }
     }
@@ -227,7 +227,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
                 when (r.kind) {
                     RowKind.Choice -> step(r.id, 1)
                     RowKind.Toggle -> when (r.id) {
-                        "saver" -> { saverOn = !saverOn; Saver.setPane(context, saverOn) }
+                        "saver" -> { saverOn = !saverOn; Saver.setWindow(context, saverOn) }
                         "drift" -> Prefs.changeDrift(!Prefs.drift)
                     }
                     RowKind.Link -> openSub(r.id)

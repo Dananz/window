@@ -152,7 +152,7 @@ fun quickRows(tv: TvState): List<List<String>> = listOf(
     listOf("qs-wifi", "qs-bt"),
     listOf("qs-pic", "qs-sound"),
     listOf("qs-saver"),
-    listOf("qs-pane", "qs-tvset"),
+    listOf("qs-window", "qs-tvset"),
 )
 
 // Left and right along a row; up and down to the next row, keeping the column
@@ -234,9 +234,9 @@ fun QuickPanel(open: Boolean, focus: String, tv: TvState) {
             Spacer(Modifier.weight(1f))
             // Window's own settings, and the TV's
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf(Triple("qs-pane", "Window settings", Glyphs.Home), Triple("qs-tvset", "TV settings", Glyphs.Tv)).forEach { (id, label, icon) ->
+                listOf(Triple("qs-window", "Window settings", Glyphs.Home), Triple("qs-tvset", "TV settings", Glyphs.Tv)).forEach { (id, label, icon) ->
                     Row(
-                        Modifier.weight(1f).height(60.dp).ring(focus == id, 20.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = if (id == "qs-pane") .1f else .07f)),
+                        Modifier.weight(1f).height(60.dp).ring(focus == id, 20.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = if (id == "qs-window") .1f else .07f)),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {

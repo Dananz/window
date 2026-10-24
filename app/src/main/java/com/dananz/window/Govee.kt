@@ -88,7 +88,7 @@ object Govee {
     suspend fun scan(): Map<String, Lan> = lanLock.withLock {
         withContext(Dispatchers.IO) {
             val found = mutableMapOf<String, Lan>()
-            val lock = runCatching { wifi.createMulticastLock("pane-govee").apply { acquire() } }.getOrNull()
+            val lock = runCatching { wifi.createMulticastLock("window-govee").apply { acquire() } }.getOrNull()
             runCatching {
                 replySocket().use { s ->
                     val ask = """{"msg":{"cmd":"scan","data":{"account_topic":"reserve"}}}""".toByteArray()

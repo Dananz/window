@@ -269,7 +269,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
     fun ok() {
         when {
             focus == "qs-btn" -> { tv.refresh(); quickOpen = true; focus = "qs-vol" }
-            focus == "add-tiles" -> { tv.refresh(); quickOpen = true; focus = "qs-pane"; settings.show(); settings.showTiles() }
+            focus == "add-tiles" -> { tv.refresh(); quickOpen = true; focus = "qs-window"; settings.show(); settings.showTiles() }
             focus == "all-lights" -> tap(focus)
             // Opening the list lands on the view that is showing
             focus == "place-btn" -> if (placeOpen) placeOpen = false else { placeOpen = true; focus = "place-${place.name}" }
@@ -278,7 +278,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
             focus.startsWith("app-") -> apps.getOrNull(focus.removePrefix("app-").toInt())?.let { app ->
                 if (app.shortcut == Shortcut.AllApps) all.show()
                 // The Settings card is Window's own settings; the TV's are a row away in the quick panel
-                else if (app.shortcut == Shortcut.Settings) { tv.refresh(); quickOpen = true; focus = "qs-pane"; settings.show() }
+                else if (app.shortcut == Shortcut.Settings) { tv.refresh(); quickOpen = true; focus = "qs-window"; settings.show() }
                 else app.intent?.let { runCatching { context.startActivity(it) }.onFailure { e -> Log.w("Window", "launch ${app.id}", e) } }
             }
         }
@@ -342,7 +342,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
                         e.key == Key.DirectionUp -> settings.move(Arrow.Up)
                         e.key == Key.DirectionDown -> settings.move(Arrow.Down)
                         isOk -> if (e.nativeKeyEvent.repeatCount == 0) settings.ok()
-                        e.key == Key.Back || e.key == Key.Escape -> if (!settings.back()) focus = "qs-pane"
+                        e.key == Key.Back || e.key == Key.Escape -> if (!settings.back()) focus = "qs-window"
                         else -> return@onPreviewKeyEvent false
                     }
                     return@onPreviewKeyEvent true
@@ -356,7 +356,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
                         e.key == Key.DirectionRight -> focus = quickMove(rows, focus, if (rtl) -1 else 1, across = true)
                         e.key == Key.DirectionUp -> focus = quickMove(rows, focus, -1, across = false)
                         e.key == Key.DirectionDown -> focus = quickMove(rows, focus, 1, across = false)
-                        isOk -> when (focus) { "qs-pane" -> settings.show(); "qs-saver" -> settings.preview = true; else -> quickOk(tv, focus) }
+                        isOk -> when (focus) { "qs-window" -> settings.show(); "qs-saver" -> settings.preview = true; else -> quickOk(tv, focus) }
                         e.key == Key.Back || e.key == Key.Escape -> { quickOpen = false; focus = "qs-btn" }
                         else -> return@onPreviewKeyEvent false
                     }
