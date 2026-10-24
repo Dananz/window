@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 320x180 launcher banner: a warm window pane on night blue -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape><solid android:color="#0B1020" /><size android:width="320dp" android:height="180dp" /></shape></item>
+    <item android:left="110dp" android:right="110dp" android:top="40dp" android:bottom="40dp">
+        <shape><corners android:radius="10dp" /><solid android:color="#FFC77A" /></shape>
+    </item>
+    <item android:left="158dp" android:right="158dp" android:top="40dp" android:bottom="40dp">
+        <shape><solid android:color="#0B1020" /></shape>
+    </item>
+</layer-list>

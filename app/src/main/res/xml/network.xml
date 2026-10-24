@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home Assistant on a home network usually speaks plain HTTP, at whatever address it has there -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

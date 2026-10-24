@@ -1,0 +1,7 @@
+# Copy to local.properties (git ignores it)
+sdk.dir=/Users/you/Library/Android/sdk
+# The TV the scripts talk to
+tv=192.168.1.50:5555
+# Optional: build an APK already signed in to Home Assistant. Never share such an APK.
+# ha.url=http://homeassistant.local:8123
+# ha.token=
