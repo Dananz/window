@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Pane</string>
-    <string name="home_button">Takes the remote\'s Home button to Pane, the living room home screen.</string>
+    <string name="app_name">Window</string>
+    <string name="home_button">Takes the remote\'s Home button to Window, the living room home screen.</string>
 </resources>

@@ -1,4 +1,4 @@
-# Set up Pane on a TV, with Claude
+# Set up Window on a TV, with Claude
 
 Open Claude Code in this repository's folder and paste the prompt below. Fill in the TV's address first
 (Settings > Network & Internet > your network, on the TV).
@@ -6,7 +6,7 @@ Open Claude Code in this repository's folder and paste the prompt below. Fill in
 ---
 
 ```text
-Set up Pane, the Google TV home screen in this repository, on my TV at <TV-IP>. Read README.md first.
+Set up Window, the Google TV home screen in this repository, on my TV at <TV-IP>. Read README.md first.
 
 The TV is next to me. Before anything that changes the TV, tell me what you're about to do. Ask me to
 look at the TV whenever a prompt might appear on it.
@@ -22,22 +22,22 @@ look at the TV whenever a prompt might appear on it.
    check `adb -s <TV-IP>:5555 shell getprop ro.build.version.sdk` is 33 or higher, and tell me the
    model (`ro.product.model`).
 
-3. Build and install: `scripts/tv-install.sh`. If the install fails with a signature error, Pane was
+3. Build and install: `scripts/tv-install.sh`. If the install fails with a signature error, Window was
    installed from another machine's build: ask me before running `adb uninstall com.dananz.window`.
    Afterwards, check the Home button service is on:
    `adb -s <TV-IP>:5555 shell settings get secure enabled_accessibility_services` lists
    com.dananz.window/com.dananz.window.HomeButton. Take a screenshot
-   (`adb exec-out screencap -p > pane.png`), look at it, and confirm Pane is on screen.
+   (`adb exec-out screencap -p > pane.png`), look at it, and confirm Window is on screen.
 
 4. Make it the home screen. Ask me first: this switches Google TV's own home and setup wizard off (they
    stay installed; scripts/tv-restore.sh brings them back). Then run `scripts/tv-default.sh`. If it stops
    because the saved Wi-Fi network belongs to the setup wizard, don't work around it: ask me to forget
    the network on the TV and join it again in Settings > Network & Internet, then run it again. Then
-   press Home (`adb shell input keyevent KEYCODE_HOME`) and confirm from a screenshot that Pane is up.
+   press Home (`adb shell input keyevent KEYCODE_HOME`) and confirm from a screenshot that Window is up.
 
-5. Home Assistant (skip if I don't use it). Pane signs in by itself, with a QR code:
-   on the remote, the gear at the top of the home screen > Pane settings (bottom of the panel) > Smart home > Home Assistant > Connect Home Assistant.
-   Pane finds Home Assistant on the network, or asks for its address. I scan the QR with my phone and
+5. Home Assistant (skip if I don't use it). Window signs in by itself, with a QR code:
+   on the remote, the gear at the top of the home screen > Window settings (bottom of the panel) > Smart home > Home Assistant > Connect Home Assistant.
+   Window finds Home Assistant on the network, or asks for its address. I scan the QR with my phone and
    log in. Then Smart home > Tiles on the wall: I pick the lights and the AC. Guide me through it; don't
    drive the remote for me, and never press OK on a light or AC tile (they switch real devices).
 
@@ -50,7 +50,7 @@ look at the TV whenever a prompt might appear on it.
 Notes for Claude, if things go sideways:
 
 - An update, `cmd package compile -f` and a force stop each switch the Home button service off.
-  `tv-install.sh` turns it on last; Pane also turns it back on by itself when it starts (it has
+  `tv-install.sh` turns it on last; Window also turns it back on by itself when it starts (it has
   WRITE_SECURE_SETTINGS).
 - `appops set ... AUTO_START` exists only on TCL TVs; elsewhere it's skipped.
 - A TV with a second user: use `--user 0` with `pm`.

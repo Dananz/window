@@ -28,24 +28,29 @@ data class Ac(
     val min: Int, val max: Int, val step: Int,
 )
 
+// An AC on the wall: each one is a big control of its own
+data class AcUnit(val id: String, val entity: String, val name: String, val ac: Ac)
+private val NEW_AC = Ac(false, AcMode.Cool, 25, 1, null, 16, 30, 1)
+
 // Fan speeds in the order the remote walks them; Home Assistant's names
 val FANS = listOf("auto" to "Auto", "low" to "Low", "medium" to "Med", "high" to "High")
 
 class Room(private val scope: CoroutineScope) {
-    // The tiles on the wall, in order: the first AC is the big control at the row's end, every other
-    // tile sits before it
+    // The tiles on the wall, in order: the ACs are the big controls at the row's end, every other
+    // tile sits before them
     var lights by mutableStateOf(emptyList<Light>())
         private set
-    var acEntity by mutableStateOf<String?>(null)
+    var acs by mutableStateOf(emptyList<AcUnit>())
         private set
-    var ac by mutableStateOf(Ac(false, AcMode.Cool, 25, 1, null, 20, 25, 5))
-        private set
+
+    fun acUnit(id: String) = acs.firstOrNull { "ac-${it.id}" == id }
 
     // The tiles changed in settings: keep what is known of each, read the rest on the next poll
     fun sync(tiles: List<Tile>) {
-        val main = tiles.firstOrNull { it.kind == Kind.Climate }
-        acEntity = main?.entity
-        lights = tiles.filter { it !== main }.map { t ->
+        acs = tiles.filter { it.kind == Kind.Climate }.map { t ->
+            acs.firstOrNull { it.entity == t.entity }?.copy(name = t.name) ?: AcUnit(tileId(t.entity), t.entity, t.name, NEW_AC)
+        }
+        lights = tiles.filter { it.kind != Kind.Climate }.map { t ->
             lights.firstOrNull { it.entity == t.entity }?.copy(name = t.name) ?: Light(tileId(t.entity), t.entity, t.name, 0, t.kind)
         }
         quietUntil = 0
@@ -59,6 +64,12 @@ class Room(private val scope: CoroutineScope) {
     suspend fun refresh() {
         if (System.currentTimeMillis() < quietUntil) return
         val fresh = lights.map { l ->
+            if (Govee.isGovee(l.entity)) return@map runCatching {
+                Govee.state(l.entity)?.let { (on, level) -> l.copy(level = if (!on) 0 else if (l.kind == Kind.Light) level else 100) } ?: l
+            }.getOrDefault(l)
+            if (Tuya.isTuya(l.entity)) return@map if (!due(l.entity)) l else runCatching {
+                Tuya.state(l.entity)?.let { (on, level) -> l.copy(level = if (!on) 0 else if (l.kind == Kind.Light) level else 100) } ?: l
+            }.getOrDefault(l)
             runCatching {
                 val s = HomeAssistant.state(l.entity)
                 val st = s.getString("state")
@@ -71,26 +82,39 @@ class Room(private val scope: CoroutineScope) {
                 })
             }.getOrDefault(l)
         }
-        val entity = acEntity
-        val acNow = if (entity == null) ac else runCatching {
-            val s = HomeAssistant.state(entity)
-            val a = s.getJSONObject("attributes")
-            val st = s.getString("state")
-            Ac(
-                on = st != "off",
-                mode = AcMode.entries.firstOrNull { it.ha == st } ?: ac.mode,
-                temp = a.optDouble("temperature", ac.temp.toDouble()).roundToInt(),
-                fan = FANS.indexOfFirst { it.first == a.optString("fan_mode") }.takeIf { it >= 0 } ?: ac.fan,
-                room = a.optDouble("current_temperature").takeIf { !it.isNaN() }?.toFloat(),
-                min = a.optDouble("min_temp", 16.0).roundToInt(),
-                max = a.optDouble("max_temp", 30.0).roundToInt(),
-                step = maxOf(1, a.optDouble("target_temp_step", 1.0).roundToInt()),
-            )
-        }.getOrDefault(ac)
+        val acsNow = acs.map { u ->
+            if (Sensibo.isSensibo(u.entity)) return@map if (!due(u.entity)) u else runCatching { u.copy(ac = Sensibo.state(u.entity, u.ac)) }.getOrDefault(u)
+            runCatching {
+                val s = HomeAssistant.state(u.entity)
+                val a = s.getJSONObject("attributes")
+                val st = s.getString("state")
+                val ac = u.ac
+                u.copy(ac = Ac(
+                    on = st != "off" && st != "unavailable",
+                    mode = AcMode.entries.firstOrNull { it.ha == st } ?: ac.mode,
+                    temp = a.optDouble("temperature", ac.temp.toDouble()).roundToInt(),
+                    fan = FANS.indexOfFirst { it.first == a.optString("fan_mode") }.takeIf { it >= 0 } ?: ac.fan,
+                    room = a.optDouble("current_temperature").takeIf { !it.isNaN() }?.toFloat(),
+                    min = a.optDouble("min_temp", 16.0).roundToInt(),
+                    max = a.optDouble("max_temp", 30.0).roundToInt(),
+                    step = maxOf(1, a.optDouble("target_temp_step", 1.0).roundToInt()),
+                ))
+            }.getOrDefault(u)
+        }
         if (System.currentTimeMillis() < quietUntil) return
         lights = fresh
-        ac = acNow
-        sentAc = acNow
+        acs = acsNow
+        acsNow.forEach { sentAc[it.entity] = it.ac }
+    }
+
+    // Cloud services count calls (Tuya's free plan has a monthly quota): read them every 30 seconds,
+    // not every poll
+    private val readAt = mutableMapOf<String, Long>()
+    private fun due(entity: String): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - (readAt[entity] ?: 0) < 30_000) return false
+        readAt[entity] = now
+        return true
     }
 
     fun poll() = scope.launch { while (true) { refresh(); delay(5000) } }
@@ -108,6 +132,8 @@ class Room(private val scope: CoroutineScope) {
         if (l.kind != Kind.Scene) lights = lights.map { if (it.id == id) it.copy(level = v) else it }
         val e = JSONObject().put("entity_id", l.entity)
         send(l.entity) {
+            if (Govee.isGovee(l.entity)) return@send Govee.set(l.entity, v, dims = l.kind == Kind.Light)
+            if (Tuya.isTuya(l.entity)) return@send Tuya.set(l.entity, v, l.kind)
             when (l.kind) {
                 Kind.Light -> if (v == 0) HomeAssistant.call("light", "turn_off", e) else HomeAssistant.call("light", "turn_on", e.put("brightness_pct", v))
                 Kind.Scene -> HomeAssistant.call("scene", "turn_on", e)
@@ -117,25 +143,31 @@ class Room(private val scope: CoroutineScope) {
         }
     }
 
-    // What Home Assistant last heard, so quick changes in a row each still reach it
-    private var sentAc: Ac? = null
+    // What Home Assistant last heard from each AC, so quick changes in a row each still reach it
+    private val sentAc = mutableMapOf<String, Ac>()
 
-    fun changeAc(next: Ac) {
-        val AC = acEntity ?: return
-        ac = next
-        send(AC) {
-            val before = sentAc ?: next.copy(on = !next.on)
+    fun changeAc(id: String, next: Ac) {
+        val u = acUnit(id) ?: return
+        val e = u.entity
+        acs = acs.map { if (it.entity == e) it.copy(ac = next) else it }
+        send(e) {
+            if (Sensibo.isSensibo(e)) return@send Sensibo.set(e, next).also { sentAc[e] = next }
+            val before = sentAc[e] ?: next.copy(on = !next.on)
+            suspend fun call(service: String, put: JSONObject.() -> Unit) = HomeAssistant.call("climate", service, JSONObject().put("entity_id", e).apply(put))
             when {
-                !next.on -> HomeAssistant.call("climate", "set_hvac_mode", JSONObject().put("entity_id", AC).put("hvac_mode", "off"))
+                !next.on -> call("set_hvac_mode") { put("hvac_mode", "off") }
                 else -> {
-                    if (!before.on || before.mode != next.mode) HomeAssistant.call("climate", "set_hvac_mode", JSONObject().put("entity_id", AC).put("hvac_mode", next.mode.ha))
-                    if (before.temp != next.temp) HomeAssistant.call("climate", "set_temperature", JSONObject().put("entity_id", AC).put("temperature", next.temp))
-                    if (before.fan != next.fan) HomeAssistant.call("climate", "set_fan_mode", JSONObject().put("entity_id", AC).put("fan_mode", FANS[next.fan].first))
+                    if (!before.on || before.mode != next.mode) call("set_hvac_mode") { put("hvac_mode", next.mode.ha) }
+                    if (before.temp != next.temp) call("set_temperature") { put("temperature", next.temp) }
+                    if (before.fan != next.fan) call("set_fan_mode") { put("fan_mode", FANS[next.fan].first) }
                 }
             }
-            sentAc = next
+            sentAc[e] = next
         }
     }
 
-    fun stepTemp(d: Int) = changeAc(ac.copy(on = true, temp = (ac.temp + d * ac.step).coerceIn(ac.min, ac.max)))
+    fun stepTemp(id: String, d: Int) {
+        val ac = acUnit(id)?.ac ?: return
+        changeAc(id, ac.copy(on = true, temp = (ac.temp + d * ac.step).coerceIn(ac.min, ac.max)))
+    }
 }

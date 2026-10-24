@@ -6,6 +6,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -33,6 +39,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
@@ -56,7 +63,7 @@ private fun Bulb(on: Boolean, all: Boolean = false, kind: Kind = Kind.Light) {
 // Draws a child above its parent without taking up room in the row, as the sheets that rise out of a tile
 private fun Modifier.above(gap: Int = 16) = layout { m, c ->
     val p = m.measure(c.copy(minWidth = 0, minHeight = 0, maxWidth = 4000, maxHeight = 4000))
-    layout(0, 0) { p.place(0, -p.height - gap.dp.roundToPx()) }
+    layout(0, 0) { p.placeRelative(0, -p.height - gap.dp.roundToPx()) }
 }
 
 @Composable
@@ -133,7 +140,7 @@ fun LightTile(light: Light?, name: String, level: Int, focused: Boolean, open: B
 }
 
 @Composable
-fun AcTile(ac: Ac, focused: Boolean, open: Boolean, row: Int) {
+fun AcTile(name: String, ac: Ac, focused: Boolean, open: Boolean, row: Int) {
     val tint = MODE_TINT.getValue(ac.mode)
     val room = ac.room?.let { "${(it * 10).toInt() / 10f}°" } ?: "–"
     Column {
@@ -194,14 +201,16 @@ fun AcTile(ac: Ac, focused: Boolean, open: Boolean, row: Int) {
                 contentAlignment = Alignment.Center,
             ) { Icon(Glyphs.mode(ac.mode, ac.on), null, Modifier.size(24.dp), tint = if (ac.on) Color(0xFF08131C) else Ink.text.copy(alpha = .7f)) }
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Bottom) {
-                Text(f("AC · {0}° now", room.removeSuffix("°")), color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 19.sp, lineHeight = 22.sp)
+                Text(t(name), maxLines = 1, overflow = TextOverflow.Ellipsis, color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 19.sp, lineHeight = 22.sp)
+                // The name has the first line to itself; the room's temperature leads the second
+                val now = f("{0}° now", room.removeSuffix("°"))
                 val sub = when {
                     open -> t("▲▼ row · ◀▶ change")
                     focused -> t("OK on/off · hold for more")
-                    ac.on -> "${t(ac.mode.doing)} · ${t(listOf("Auto fan", "Low fan", "Medium fan", "High fan")[ac.fan])}"
-                    else -> t("Off")
+                    ac.on -> "$now · ${t(ac.mode.doing)}"
+                    else -> "$now · ${t("Off")}"
                 }
-                Text(sub, color = Ink.text.copy(alpha = .7f), fontFamily = Golos, fontSize = 14.sp, lineHeight = 17.sp)
+                Text(sub, color = Ink.text.copy(alpha = .7f), fontFamily = Golos, fontSize = 14.sp, lineHeight = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(
                 "${ac.temp}°", Modifier.graphicsLayer { compositingStrategy = CompositingStrategy.ModulateAlpha; alpha = if (ac.on) 1f else .45f },
@@ -216,16 +225,37 @@ fun ControlsRow(room: Room, focus: String, grabbed: String?, acRow: Int, dim: Bo
     val a = animateFloatAsState(if (dim) .4f else 1f, glide(Motion.DIM), label = "dim")
     val lights = room.lights.filter { it.kind == Kind.Light }
     val anyOn = lights.any { it.level > 0 }
-    Row(
-        Modifier.fillMaxSize().padding(start = 72.dp, end = 72.dp, bottom = 44.dp + 92.dp + 32.dp).graphicsLayer { compositingStrategy = CompositingStrategy.ModulateAlpha; alpha = a.value }
-            .wrapContentSize(Alignment.BottomStart),
-        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Bottom,
+    // As many tiles as Home Assistant has: past the screen's width the row scrolls, keeping the
+    // focused tile in view
+    val keys = (if (lights.isNotEmpty()) listOf("all-lights") else emptyList()) + room.lights.map { "light-${it.id}" } + room.acs.map { "ac-${it.id}" }
+    val state = rememberLazyListState()
+    LaunchedEffect(focus) {
+        val i = keys.indexOf(focus).takeIf { it >= 0 } ?: return@LaunchedEffect
+        val info = state.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == i } ?: return@LaunchedEffect state.animateScrollToItem(i)
+        val end = info.viewportEndOffset - info.afterContentPadding
+        when {
+            item.offset < 0 -> state.animateScrollBy(item.offset.toFloat(), glide(Motion.TEXT))
+            item.offset + item.size > end -> state.animateScrollBy((item.offset + item.size - end).toFloat(), glide(Motion.TEXT))
+        }
+    }
+    Box(
+        Modifier.fillMaxSize().padding(bottom = 44.dp + 92.dp + 32.dp).graphicsLayer { compositingStrategy = CompositingStrategy.ModulateAlpha; alpha = a.value },
+        contentAlignment = Alignment.BottomStart,
     ) {
-        if (lights.isNotEmpty()) LightTile(null, "All lights", if (anyOn) lights.maxOf { it.level } else 0, focus == "all-lights", false, all = true)
-        room.lights.forEach { l -> LightTile(l, l.name, l.level, focus == "light-${l.id}", grabbed == "light-${l.id}") }
-        if (room.acEntity != null) AcTile(room.ac, focus == "ac-card", grabbed == "ac-card", acRow)
-        // Nothing on the wall yet: one tile that opens the page that puts things there
-        if (room.lights.isEmpty() && room.acEntity == null) AddTiles(focus == "add-tiles")
+        // As tall as the room above the row: a list clips what is drawn outside it, and the sheets that
+        // rise out of a tile must stay whole
+        LazyRow(
+            Modifier.fillMaxSize(), state = state, userScrollEnabled = false,
+            contentPadding = PaddingValues(horizontal = 72.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Bottom,
+        ) {
+            if (lights.isNotEmpty()) item("all-lights") { LightTile(null, "All lights", if (anyOn) lights.maxOf { it.level } else 0, focus == "all-lights", false, all = true) }
+            items(room.lights, key = { "light-${it.id}" }) { l -> LightTile(l, l.name, l.level, focus == "light-${l.id}", grabbed == "light-${l.id}") }
+            items(room.acs, key = { "ac-${it.id}" }) { u -> AcTile(u.name, u.ac, focus == "ac-${u.id}", grabbed == "ac-${u.id}", acRow) }
+            // Nothing on the wall yet: one tile that opens the page that puts things there
+            if (room.lights.isEmpty() && room.acs.isEmpty()) item("add-tiles") { AddTiles(focus == "add-tiles") }
+        }
     }
 }
 
@@ -238,7 +268,7 @@ private fun AddTiles(focused: Boolean) {
         Bulb(false)
         Column {
             Text(t("Add tiles"), color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 19.sp, lineHeight = 22.sp)
-            Text(t("Lights, the AC and more, from Pane settings"), color = Ink.text.copy(alpha = .7f), fontFamily = Golos, fontSize = 14.sp, lineHeight = 17.sp)
+            Text(t("Lights, the AC and more, from Window settings"), color = Ink.text.copy(alpha = .7f), fontFamily = Golos, fontSize = 14.sp, lineHeight = 17.sp)
         }
     }
 }

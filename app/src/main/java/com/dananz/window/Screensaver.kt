@@ -30,6 +30,13 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asComposeColorFilter
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.runtime.produceState
+import android.graphics.BitmapFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.CompositionLocalProvider
@@ -54,7 +61,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
 
-// Pane's screensaver: the room as Pane shows it, the camera moving in through the window, and as it
+// Window's screensaver: the room as Window shows it, the camera moving in through the window, and as it
 // arrives the room and the glass dissolve around the view, which never moves or changes. Then the
 // view goes on alone, zoomed in further and drifting from side to side for as long as it runs, with
 // the time and the weather in a corner that moves every few minutes: nothing stays lit in one place,
@@ -71,6 +78,9 @@ class Screensaver : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
         super.onCreate()
         Prefs.load(this)
         Ha.load(this)
+        Govee.load(this)
+        Sensibo.load(this)
+        Tuya.load(this)
         saved.performRestore(null)
         life.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
     }
@@ -79,6 +89,8 @@ class Screensaver : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
         super.onAttachedToWindow()
         isInteractive = false
         isFullscreen = true
+        // Black until the first frame, never the theme's empty background
+        window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK))
         setContentView(ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@Screensaver)
             setViewTreeSavedStateRegistryOwner(this@Screensaver)
@@ -109,19 +121,27 @@ private val CORNERS = listOf(Alignment.BottomStart, Alignment.TopEnd, Alignment.
 
 // The view alone: this much larger than the screen, so it can drift this far either way
 private const val ZOOM = 1.32f
+// The camera's way to the window: slower than the home screen's moves, eased at both ends
+private const val DREAM_CAMERA = 3_200
 private val DRIFT = (ZOOM - 1) * 1920 / 2
 
-// The screensaver, here and as Pane settings' preview (which any key ends)
+// The screensaver, here and as Window settings' preview (which any key ends)
 @Composable
 fun Dream(preview: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val place = remember {
         val prefs = context.getSharedPreferences("home", Context.MODE_PRIVATE)
-        runCatching { Place.valueOf(prefs.getString("place", "")!!) }.getOrDefault(Place.NewYork)
+        Seen.place ?: runCatching { Place.valueOf(prefs.getString("place", "")!!) }.getOrDefault(Place.NewYork)
     }
     val room = remember { Room(scope) }
-    var weather by remember { mutableStateOf<Weather?>(null) }
+    // Where the home screen was, so the screensaver starts from that very frame: the same picture, the
+    // same camera and shade, no black and no fade in. It holds still until the view is on its own, so
+    // nothing is made again while the camera moves
+    val seen = remember { Seen.levels?.let { Triple(it, Seen.sky ?: Sky.Clear, Seen.night ?: false) } }
+    val seenView = remember { Seen.view }
+    val seenDim = remember { Seen.dim }
+    var weather by remember { mutableStateOf(Seen.weather) }
     var now by remember { mutableStateOf(LocalTime.now()) }
     var today by remember { mutableStateOf(LocalDate.now()) }
     // room: a moment in it; in: the camera to the window; bare: the room dissolving around the view;
@@ -137,14 +157,17 @@ fun Dream(preview: Boolean) {
     LaunchedEffect(Unit) { room.sync(Prefs.tiles); runCatching { loadWeather() }.onSuccess { weather = it } }
     LaunchedEffect(Unit) { while (true) { now = LocalTime.now(); today = LocalDate.now(); delay(10_000) } }
     LaunchedEffect(Unit) {
-        delay(1_200)
+        // A breath on the home screen's own frame (longer when there was none to start from)
+        delay(if (seen != null) 600 else 1_200)
         step = "in"
-        // The frame starts to dissolve while the camera is still arriving, so it goes through the glass
-        delay(Motion.CAMERA - 900L)
+        // The room starts to dissolve with the last stretch of the move still to go, so the camera goes
+        // through the glass, and has finished by the time the view is on its own
+        delay(DREAM_CAMERA - 1_500L)
         step = "bare"
-        delay(Motion.SCENE.toLong())
+        delay(1_600)
         step = "alone"
         launch { zoom.animateTo(1f, glide(9_000)) }
+        delay(700)
         if (Prefs.saverShows != 2) words.animateTo(1f, glide(Motion.TEXT_IN * 2))
         while (true) {
             val every = Prefs.clockMoves
@@ -168,16 +191,36 @@ fun Dream(preview: Boolean) {
     val w = weather
     val night = w?.let { !it.sunUp } ?: (now.hour < 6 || now.hour >= 18)
     val sky = w?.sky ?: Sky.Clear
+    // Until the view is alone, the room shows what the home screen showed
+    val held = seen != null && step != "alone"
     val rtl = Lang.he
     CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides if (rtl) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr) {
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (step != "alone") {
             CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
-                HomeScene(room.lights.associate { it.id to it.level }, sky, night, if (step == "room") "rest" else "dream", place, dim = false, bare = step == "bare", onLand = { land = it })
+                HomeScene(
+                    if (held) seen!!.first else room.lights.associate { it.id to it.level }, if (held) seen!!.second else sky, if (held) seen!!.third else night,
+                    if (step == "room") "rest" else "dream", place, dim = step == "room" && seenDim, bare = step == "bare", onLand = { land = it },
+                    cameraMs = DREAM_CAMERA, home = false, at = seenView.takeIf { step == "room" },
+                )
             }
         }
         // In rain there is no view of its own behind the fogged glass: the landscape is drawn plain
         val shown = land ?: ImageBitmap.imageResource(if (night) place.night else place.day)
+        // The sharp copy for the zoomed-in view, read while the camera is still on its way in
+        val context = LocalContext.current
+        val viewNight = if (held) seen!!.third else night
+        val hd by produceState<ImageBitmap?>(null, place, viewNight) {
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val t = System.currentTimeMillis()
+                    context.resources.openRawResource(if (viewNight) place.nightHd else place.dayHd).use { BitmapFactory.decodeStream(it) }.asImageBitmap()
+                        .also { android.util.Log.d("Window", "sharp view decoded in ${System.currentTimeMillis() - t} ms") }
+                }.onFailure { android.util.Log.w("Window", "sharp view", it) }.getOrNull()
+            }
+        }
+        val sharpIn = remember { Animatable(0f) }
+        LaunchedEffect(step, hd) { if (step == "alone" && hd != null) sharpIn.animateTo(1f, glide(1_200)) }
         if (step == "alone") {
             val from = landRect("dream")
             Box(Modifier.fillMaxSize().drawBehind {
@@ -189,7 +232,22 @@ fun Dream(preview: Boolean) {
                 val tp = from.top + ((1080 - th) / 2 - from.top) * k
                 val ww = from.width + (tw - from.width) * k
                 val hh = from.height + (th - from.height) * k
-                drawImage(shown, dstOffset = IntOffset((l * u).toInt(), (tp * u).toInt()), dstSize = IntSize((ww * u).toInt(), (hh * u).toInt()))
+                val at = IntOffset((l * u).toInt(), (tp * u).toInt())
+                val size = IntSize((ww * u).toInt(), (hh * u).toInt())
+                val sharp = hd
+                // The picture the room left drawn first, the sharp copy fading in over it: no frame jumps
+                drawImage(shown, dstOffset = at, dstSize = size, filterQuality = FilterQuality.High)
+                val a = sharpIn.value
+                if (sharp != null && a > 0f) {
+                    // Graded and clouded as the home screen's copy is; in rain that copy is plain, so this is too
+                    val graded = land != null
+                    drawImage(sharp, dstOffset = at, dstSize = size, alpha = a, colorFilter = if (graded) landGrade(sky)?.asComposeColorFilter() else null, filterQuality = FilterQuality.High)
+                    val cloud = if (graded) cloudOf(sky) else 0f
+                    if (cloud > 0f) drawRect(
+                        Brush.verticalGradient(0f to Color(0x8C96A0AF), .45f to Color(0x40788291), .7f to Color.Transparent, startY = at.y.toFloat(), endY = at.y + size.height.toFloat()),
+                        topLeft = androidx.compose.ui.geometry.Offset(at.x.toFloat(), at.y.toFloat()), size = androidx.compose.ui.geometry.Size(size.width.toFloat(), size.height.toFloat()), alpha = cloud * a,
+                    )
+                }
             })
         }
         if (Prefs.saverShows != 2) {

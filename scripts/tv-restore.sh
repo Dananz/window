@@ -1,6 +1,6 @@
 #!/bin/sh
 # Puts the TV's own home back: Google TV's home and its setup wizard on again, Home to Google TV, and
-# the screensaver back to Google's ambient mode. Pane stays installed (pick it again with tv-default.sh).
+# the screensaver back to Google's ambient mode. Window stays installed (pick it again with tv-default.sh).
 # Run this before any factory reset: the setup wizard must be on for the TV's first-run setup.
 . "$(dirname "$0")/tv-env.sh"
 sh() { adb -s "$TV" shell "$@"; }

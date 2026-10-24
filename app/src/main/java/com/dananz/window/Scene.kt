@@ -1,5 +1,6 @@
 package com.dananz.window
 
+import androidx.compose.runtime.SideEffect
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -60,11 +61,14 @@ import kotlin.math.min
 import kotlin.math.sqrt
 import kotlin.random.Random
 
-enum class Place(val label: String, val day: Int, val night: Int) {
-    NewYork("New York", R.drawable.land_ny_day, R.drawable.land_ny_night),
-    Dubai("Dubai", R.drawable.land_dubai_day, R.drawable.land_dubai_night),
-    LosAngeles("Los Angeles", R.drawable.land_la_day, R.drawable.land_la_night),
-    Village("Alpine village", R.drawable.land_village_day, R.drawable.land_village_night),
+// Each view twice: the home screen's (1672 wide), and twice that for the screensaver, which fills the
+// screen with it zoomed in (upscaled with Real-ESRGAN x4plus, so every building stays where it is;
+// AVIF in res/raw, about 40% smaller than WebP at the same quality)
+enum class Place(val label: String, val day: Int, val night: Int, val dayHd: Int, val nightHd: Int) {
+    NewYork("New York", R.drawable.land_ny_day, R.drawable.land_ny_night, R.raw.land_ny_day_hd, R.raw.land_ny_night_hd),
+    Dubai("Dubai", R.drawable.land_dubai_day, R.drawable.land_dubai_night, R.raw.land_dubai_day_hd, R.raw.land_dubai_night_hd),
+    LosAngeles("Los Angeles", R.drawable.land_la_day, R.drawable.land_la_night, R.raw.land_la_day_hd, R.raw.land_la_night_hd),
+    Village("Alpine village", R.drawable.land_village_day, R.drawable.land_village_night, R.raw.land_village_day_hd, R.raw.land_village_night_hd),
 }
 
 // Where the camera moves for what has focus: zoom, and the point (fractions) it centres
@@ -146,10 +150,26 @@ private fun grade(sat: Float, bright: Float, contrast: Float): ColorMatrixColorF
     m.postConcat(android.graphics.ColorMatrix(floatArrayOf(bright, 0f, 0f, 0f, 0f, 0f, bright, 0f, 0f, 0f, 0f, 0f, bright, 0f, 0f, 0f, 0f, 0f, 1f, 0f)))
     return ColorMatrixColorFilter(m)
 }
+internal fun landGrade(sky: Sky) = LAND_GRADE[sky]
+internal fun cloudOf(sky: Sky) = when (sky) { Sky.Clear -> 0f; Sky.Cloudy -> .5f; Sky.Rain -> .75f }
 private val LAND_GRADE = mapOf(Sky.Clear to null, Sky.Cloudy to grade(.55f, .82f, .9f), Sky.Rain to grade(.35f, .58f, .8f))
 private val ROOM_GRADE = mapOf(Sky.Clear to null, Sky.Cloudy to grade(.85f, .88f, 1f), Sky.Rain to grade(.75f, .74f, 1f))
 
 private data class Look(val place: Place, val night: Boolean, val sky: Sky, val levels: Map<String, Int>)
+
+// The last picture made, so a new HomeScene for the same look (the screensaver's) needn't make it again
+private var lastBaked: Pair<Look, Baked>? = null
+
+// What the home screen last showed, for the screensaver to start from
+object Seen {
+    var levels: Map<String, Int>? = null
+    var sky: Sky? = null
+    var night: Boolean? = null
+    var view: View? = null
+    var dim = false
+    var place: Place? = null
+    var weather: Weather? = null
+}
 
 // The living room, baked: the landscape behind the window, rain on the glass, and the room in
 // front with each light's pool, all drawn into one picture whenever one of them changes. This
@@ -158,23 +178,32 @@ private data class Look(val place: Place, val night: Boolean, val sky: Sky, val 
 @Composable
 // bare: the room and its glass fade away and leave the view outside where it is (the screensaver goes
 // through the window). onLand: the landscape as drawn, for whoever takes over from the room
-fun HomeScene(levels: Map<String, Int>, sky: Sky, night: Boolean, view: String, place: Place, dim: Boolean, pan: Float = 0f, bare: Boolean = false, onLand: ((ImageBitmap?) -> Unit)? = null) {
+fun HomeScene(
+    levels: Map<String, Int>, sky: Sky, night: Boolean, view: String, place: Place, dim: Boolean, pan: Float = 0f, bare: Boolean = false,
+    onLand: ((ImageBitmap?) -> Unit)? = null, cameraMs: Int = Motion.CAMERA, home: Boolean = true, at: View? = null,
+) {
     val context = LocalContext.current
     val v = VIEWS[view] ?: VIEWS.getValue("rest")
     // A new target mid-move carries the speed the camera already has, so quick presses bend the move
-    val view = View(v.s, v.x + pan * PAN, v.y)
-    val cam = animateValueAsState(frameOf(view), MOVE, glide(Motion.CAMERA), label = "camera")
-    val depth = animateValueAsState(depthOf(view), MOVE, glide(Motion.CAMERA), label = "depth")
+    val view = at ?: View(v.s, v.x + pan * PAN, v.y)
+    val cam = animateValueAsState(frameOf(view), MOVE, glide(cameraMs), label = "camera")
+    val depth = animateValueAsState(depthOf(view), MOVE, glide(cameraMs), label = "depth")
+    // The home screen leaves what it shows for the screensaver, which starts from that very frame
+    if (home) SideEffect { Seen.levels = levels; Seen.sky = sky; Seen.night = night; Seen.view = view; Seen.dim = dim; Seen.place = place }
     // Darkened behind the raised apps; a tint on the one image, not another layer over the screen
     val shade = animateFloatAsState(if (dim) .45f else 0f, glide(Motion.DIM), label = "shade")
     val gone = animateFloatAsState(if (bare) 1f else 0f, glide(Motion.SCENE), label = "bare")
 
     val look = Look(place, night, sky, POOLS.keys.associateWith { levels[it] ?: 0 })
-    var shown by remember { mutableStateOf<Baked?>(null) }
+    // The picture already made for this look, by this screen or the other, shows from the first frame
+    val ready = lastBaked?.takeIf { it.first == look }?.second
+    var shown by remember { mutableStateOf(ready) }
     var previous by remember { mutableStateOf<Baked?>(null) }
     val fade = remember { Animatable(1f) }
-    var last by remember { mutableStateOf<Look?>(null) }
+    var last by remember { mutableStateOf(if (ready != null) look else null) }
+    LaunchedEffect(Unit) { if (ready != null) onLand?.invoke(ready.land) }
     LaunchedEffect(look) {
+        if (last == look && shown != null) return@LaunchedEffect
         // Another day's sky: the words under the clock swap first, and the new sky is made after,
         // so its making can't stall their fade (and a quick run along the days makes none between)
         val l = last
@@ -191,6 +220,7 @@ fun HomeScene(levels: Map<String, Int>, sky: Sky, night: Boolean, view: String, 
         fade.snapTo(0f)
         previous = shown
         shown = baked
+        lastBaked = look to baked
         onLand?.invoke(baked.land)
         fade.animateTo(1f, glide(ms))
         previous = null
@@ -288,7 +318,7 @@ private fun bake(context: Context, look: Look): Baked {
     Canvas(land).run {
         val all = RectF(0f, 0f, LAND_W, LAND_H)
         drawBitmap(decode(context, if (look.night) look.place.night else look.place.day), null, all, Paint(filtered).apply { colorFilter = LAND_GRADE[look.sky] })
-        val cloud = when (look.sky) { Sky.Clear -> 0f; Sky.Cloudy -> .5f; Sky.Rain -> .75f }
+        val cloud = cloudOf(look.sky)
         if (cloud > 0f) drawRect(all, Paint().apply {
             shader = LinearGradient(0f, 0f, 0f, LAND_H, intArrayOf(0x8C96A0AF.toInt(), 0x40788291, 0), floatArrayOf(0f, .45f, .7f), Shader.TileMode.CLAMP)
             alpha = (cloud * 255).toInt()

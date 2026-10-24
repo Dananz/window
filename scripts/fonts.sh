@@ -13,7 +13,7 @@ curl -sL -o "$TMP/golos.ttf" "$GF/golostext/GolosText%5Bwght%5D.ttf"
 curl -sL -o "$TMP/gs.ttf" "$GF/googlesans/GoogleSans%5BGRAD,opsz,wght%5D.ttf"
 HEB="U+0590-05FF,U+FB1D-FB4F,U+20AA"
 for w in 400 500 600 700; do
-  fonttools varLib.instancer -q "$TMP/gs.ttf" wght=$w GRAD=0 opsz=17 -o "$TMP/gs-$w.ttf"
+  fonttools varLib.instancer -q "$TMP/gs.ttf" wght=$w GRAD=0 opsz=18 -o "$TMP/gs-$w.ttf"
   pyftsubset "$TMP/gs-$w.ttf" --unicodes=$HEB --layout-features='*' --glyph-names --output-file="$TMP/gsh-$w.ttf"
 done
 for w in 400 500 600 700 800; do fonttools varLib.instancer -q "$TMP/syne.ttf" wght=$w -o "$TMP/syne-$w.ttf"; done

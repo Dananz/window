@@ -1,8 +1,8 @@
 #!/bin/sh
-# Makes Pane the TV's real home screen, the way CleanYourTV does it: Google TV's home (launcherx)
+# Makes Window the TV's real home screen, the way CleanYourTV does it: Google TV's home (launcherx)
 # and its setup wizard (setupwraith, which otherwise takes Home back) are switched off with
 # `pm disable-user`. Nothing is uninstalled; scripts/tv-restore.sh puts both back.
-# Also sets Pane's clock as the screensaver.
+# Also sets Window's clock as the screensaver.
 set -e
 . "$(dirname "$0")/tv-env.sh"
 PKG=com.dananz.window
@@ -20,8 +20,8 @@ if printf '%s\n' "$OWNERS" | grep setupwraith >/dev/null; then
   echo "On the TV, forget the network and join it again in Settings > Network & Internet, then run this again." >&2
   exit 1
 fi
-# Pane must be installed before the stock home goes
-sh pm list packages $PKG | grep -q "$PKG" || { echo "Pane is not installed; run scripts/tv-install.sh first." >&2; exit 1; }
+# Window must be installed before the stock home goes
+sh pm list packages $PKG | grep -q "$PKG" || { echo "Window is not installed; run scripts/tv-install.sh first." >&2; exit 1; }
 
 # What was disabled before, for the record
 mkdir -p "$(dirname "$0")/../backup"

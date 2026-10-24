@@ -64,7 +64,7 @@ object Off { var parts = emptySet<String>() }
 class MainActivity : ComponentActivity() {
     private var apps by mutableStateOf(emptyList<TvApp>())
     private var resumes by mutableIntStateOf(0)
-    // A remote button that opens one of Pane's panels (Input, the gear), counted so the same one twice opens twice
+    // A remote button that opens one of Window's panels (Input, the gear), counted so the same one twice opens twice
     private var panel by mutableStateOf<Pair<String, Int>?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,12 +73,15 @@ class MainActivity : ComponentActivity() {
         Off.parts = intent.getStringExtra("off")?.split(",")?.toSet() ?: emptySet()
         Prefs.load(this)
         Ha.load(this)
+        Govee.load(this)
+        Sensibo.load(this)
+        Tuya.load(this)
         panelFrom(intent)
         setContent { DesignCanvas { Home(apps, resumes, panel) { apps = it } } }
-        // Pane's Home button is an accessibility service, and with any service on, Compose describes
+        // Window's Home button is an accessibility service, and with any service on, Compose describes
         // the screen to the system after every change. Nothing here is read aloud, so it is left out
         window.decorView.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-        // Pane is the home screen: Back never leaves it (the screen's own keys decide what Back does)
+        // Window is the home screen: Back never leaves it (the screen's own keys decide what Back does)
         onBackPressedDispatcher.addCallback(this) {}
     }
 
@@ -132,7 +135,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
     // A line at the foot of the screen for a moment: what just happened
     var toast by remember { mutableStateOf<Pair<String, Int>?>(null) }
     LaunchedEffect(toast) { if (toast != null) { delay(2600); toast = null } }
-    // Pane settings, in the quick panel's sheet
+    // Window settings, in the quick panel's sheet
     val placeNow = { place }
     val setPlaceNow = { p: Place -> place = p; prefs.edit().putString("place", p.name).apply() }
     val appsNow = rememberUpdatedState(apps)
@@ -160,7 +163,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
     LaunchedEffect(focus, placeOpen) { Log.d("Window", "focus=$focus open=$placeOpen") }
     LaunchedEffect(Unit) { while (true) { now = LocalTime.now(); today = LocalDate.now(); delay(15_000) } }
     LaunchedEffect(Unit) { room.poll() }
-    LaunchedEffect(Unit) { while (true) { runCatching { loadWeather() }.onSuccess { weather = it }.onFailure { Log.w("Window", "weather", it) }; delay(10 * 60_000) } }
+    LaunchedEffect(Unit) { while (true) { runCatching { loadWeather() }.onSuccess { weather = it; Seen.weather = it }.onFailure { Log.w("Window", "weather", it) }; delay(10 * 60_000) } }
 
     fun choose(p: Place) { place = p; prefs.edit().putString("place", p.name).apply(); placeOpen = false; focus = "place-btn" }
 
@@ -168,7 +171,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
     // Rows, top to bottom: view + forecast, the room's controls, the apps. Left and right stay in
     // the row; up or down lands on the next row's first item.
     val controls = (if (room.lights.any { it.kind == Kind.Light }) listOf("all-lights") else emptyList()) +
-        room.lights.map { "light-${it.id}" } + (if (room.acEntity != null) listOf("ac-card") else emptyList())
+        room.lights.map { "light-${it.id}" } + room.acs.map { "ac-${it.id}" }
     val rows = listOf(
         listOf("qs-btn", "place-btn") + (0 until dayCount).map { "day-$it" },
         controls.ifEmpty { listOf("add-tiles") },
@@ -200,6 +203,11 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
         }
         val r = rows.indexOfFirst { focus in it }
         if (r < 0) { focus = rows.last().first(); return }
+        // Up or Down from the apps' full-screen view leaves it, back to where the remote came from, as Back does
+        if (focus.startsWith("app-") && (d == Dir.Up || d == Dir.Down)) {
+            focus = above.takeIf { a -> rows.any { a in it } } ?: rows.getOrNull(r - 1)?.first() ?: focus
+            return
+        }
         val row = rows[r]
         focus = when (d) {
             Dir.Left -> row.getOrElse(row.indexOf(focus) - 1) { focus }
@@ -220,7 +228,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
                 if (it.level > 0) lastLevel[it.id] = it.level
                 room.setLevel(it.id, if (anyOn) 0 else lastLevel[it.id] ?: 60)
             }
-            id == "ac-card" -> room.changeAc(room.ac.copy(on = !room.ac.on))
+            id.startsWith("ac-") -> room.acUnit(id)?.let { room.changeAc(id, it.ac.copy(on = !it.ac.on)) }
             id.startsWith("light-") -> {
                 val l = room.lights.first { "light-${it.id}" == id }
                 if (l.kind != Kind.Light) { room.setLevel(l.id, if (l.level > 0) 0 else 100); if (l.kind == Kind.Scene) toast = f("Running {0}", t(l.name)) to (toast?.second ?: 0) + 1; return }
@@ -229,29 +237,32 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
             }
         }
     }
-    fun holdable(id: String) = (id.startsWith("light-") && room.lights.any { "light-${it.id}" == id && it.kind == Kind.Light }) || id == "ac-card"
+    fun holdable(id: String) = (id.startsWith("light-") && room.lights.any { "light-${it.id}" == id && it.kind == Kind.Light }) || room.acUnit(id) != null
     fun open(id: String) { acRow = 0; grabbed = id }
 
     fun adjust(pressed: Dir) {
         // Right is always toward the right of the screen: in Hebrew rows run the other way
         val d = visual(pressed)
         val id = grabbed ?: return
-        if (id == "ac-card") {
-            val ac = room.ac
+        val unit = room.acUnit(id)
+        if (unit != null) {
+            val ac = unit.ac
             when (d) {
                 Dir.Up, Dir.Down -> acRow = (acRow + if (d == Dir.Down) 1 else -1).coerceIn(0, 2)
                 else -> {
+                    // The fan's segments run with the language; temperature, like the light's level,
+                    // goes up to the right of the screen in either
                     val k = if (d == Dir.Right) 1 else -1
                     when (acRow) {
-                        0 -> room.stepTemp(k)
-                        1 -> room.changeAc(ac.copy(on = true, mode = AcMode.entries[(ac.mode.ordinal + 1) % AcMode.entries.size]))
-                        else -> room.changeAc(ac.copy(on = true, fan = (ac.fan + k).coerceIn(0, FANS.lastIndex)))
+                        0 -> room.stepTemp(id, if (pressed == Dir.Right) 1 else -1)
+                        1 -> room.changeAc(id, ac.copy(on = true, mode = AcMode.entries[(ac.mode.ordinal + 1) % AcMode.entries.size]))
+                        else -> room.changeAc(id, ac.copy(on = true, fan = (ac.fan + k).coerceIn(0, FANS.lastIndex)))
                     }
                 }
             }
         } else {
             val l = room.lights.first { "light-${it.id}" == id }
-            room.setLevel(l.id, l.level + if (d == Dir.Up || d == Dir.Right) 10 else -10)
+            room.setLevel(l.id, l.level + if (pressed == Dir.Up || pressed == Dir.Right) 10 else -10)
         }
     }
 
@@ -266,7 +277,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
             focus.startsWith("place-") -> choose(Place.valueOf(focus.removePrefix("place-")))
             focus.startsWith("app-") -> apps.getOrNull(focus.removePrefix("app-").toInt())?.let { app ->
                 if (app.shortcut == Shortcut.AllApps) all.show()
-                // The Settings card is Pane's own settings; the TV's are a row away in the quick panel
+                // The Settings card is Window's own settings; the TV's are a row away in the quick panel
                 else if (app.shortcut == Shortcut.Settings) { tv.refresh(); quickOpen = true; focus = "qs-pane"; settings.show() }
                 else app.intent?.let { runCatching { context.startActivity(it) }.onFailure { e -> Log.w("Window", "launch ${app.id}", e) } }
             }
@@ -312,7 +323,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
                     }
                 }
                 // Back is acted on as it goes down; its way up is kept here too, or Android takes it
-                // as Back for the whole app and sends Pane behind Google TV's home
+                // as Back for the whole app and sends Window behind Google TV's home
                 if ((e.key == Key.Back || e.key == Key.Escape) && e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
                 // The screensaver's preview: any key ends it
                 if (settings.preview) {
@@ -345,7 +356,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
                         e.key == Key.DirectionRight -> focus = quickMove(rows, focus, if (rtl) -1 else 1, across = true)
                         e.key == Key.DirectionUp -> focus = quickMove(rows, focus, -1, across = false)
                         e.key == Key.DirectionDown -> focus = quickMove(rows, focus, 1, across = false)
-                        isOk -> if (focus == "qs-pane") settings.show() else quickOk(tv, focus)
+                        isOk -> when (focus) { "qs-pane" -> settings.show(); "qs-saver" -> settings.preview = true; else -> quickOk(tv, focus) }
                         e.key == Key.Back || e.key == Key.Escape -> { quickOpen = false; focus = "qs-btn" }
                         else -> return@onPreviewKeyEvent false
                     }

@@ -12,12 +12,12 @@ import androidx.compose.runtime.setValue
 import org.json.JSONArray
 import org.json.JSONObject
 
-// What Pane settings set, kept in the "home" preferences and read as Compose state, so the home
+// What Window settings set, kept in the "home" preferences and read as Compose state, so the home
 // screen and the screensaver follow a change at once
 object Prefs {
     private lateinit var sp: SharedPreferences
 
-    // The app opened over Pane when the TV turns on; null: none
+    // The app opened over Window when the TV turns on; null: none
     var startApp by mutableStateOf<String?>(null)
         private set
     var clock24 by mutableStateOf(true)
@@ -76,7 +76,7 @@ object Prefs {
         )
 }
 
-// The TV's own screensaver settings, which Pane changes with WRITE_SECURE_SETTINGS and
+// The TV's own screensaver settings, which Window changes with WRITE_SECURE_SETTINGS and
 // WRITE_SETTINGS (both granted over adb by the install script)
 object Saver {
     private const val GOOGLE = "com.google.android.apps.tv.dreamx/.service.Backdrop"

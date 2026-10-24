@@ -15,15 +15,15 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 
 // Google TV sends Home to its own launcher whichever app holds the Home role, so the remote's Home
-// is caught here, before the system acts on it, and brings Pane up instead, as it was left. With
+// is caught here, before the system acts on it, and brings Window up instead, as it was left. With
 // Google TV's home switched off it also answers the buttons only that home answered: Input and the
-// gear open Pane's quick settings. Switched on as an accessibility service (Settings, or `settings
+// gear open Window's quick settings. Switched on as an accessibility service (Settings, or `settings
 // put secure enabled_accessibility_services`).
 class HomeButton : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
 
     // Waking from standby, Google TV puts its own home up first, and again a moment later as it
-    // settles: Pane comes up now and once more after that
+    // settles: Window comes up now and once more after that
     private val wake = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             home()
@@ -43,7 +43,7 @@ class HomeButton : AccessibilityService() {
         return true
     }
 
-    // Just after the TV starts, Google TV's home comes up first: Pane takes over from it
+    // Just after the TV starts, Google TV's home comes up first: Window takes over from it
     override fun onServiceConnected() {
         Keys.wanted(this, true)
         registerReceiver(wake, IntentFilter(Intent.ACTION_SCREEN_ON), RECEIVER_NOT_EXPORTED)
@@ -51,7 +51,7 @@ class HomeButton : AccessibilityService() {
         if (SystemClock.elapsedRealtime() < 3 * 60_000) { home(); opening() }
     }
 
-    // Open on start (Pane settings): once Pane is up, the chosen app opens over it
+    // Open on start (Window settings): once Window is up, the chosen app opens over it
     private fun opening() {
         val pkg = Prefs.startApp ?: return
         main.postDelayed({
@@ -62,7 +62,7 @@ class HomeButton : AccessibilityService() {
     }
 
     // Unbound while the app is alive: someone switched it off in Settings, so it stays off. A force
-    // stop or an update kills the app first and never gets here, and Pane puts the service back
+    // stop or an update kills the app first and never gets here, and Window puts the service back
     override fun onUnbind(intent: Intent?): Boolean {
         Keys.wanted(this, false)
         return super.onUnbind(intent)
@@ -89,7 +89,7 @@ class HomeButton : AccessibilityService() {
 }
 
 // Android takes an app's accessibility service off when the app is force-stopped or updated. With
-// WRITE_SECURE_SETTINGS (granted once over adb by the install script) Pane switches it back on
+// WRITE_SECURE_SETTINGS (granted once over adb by the install script) Window switches it back on
 // whenever it starts, unless it was switched off on purpose.
 object Keys {
     private fun prefs(context: Context) = context.getSharedPreferences("home", Context.MODE_PRIVATE)

@@ -47,6 +47,7 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Bold
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.bold.Bluetooth
+import com.adamglin.phosphoricons.bold.MoonStars
 import com.adamglin.phosphoricons.bold.WifiHigh
 import com.adamglin.phosphoricons.fill.Monitor
 import com.adamglin.phosphoricons.fill.SpeakerHigh
@@ -62,6 +63,7 @@ object QuickGlyphs {
     val Bluetooth = PhosphorIcons.Bold.Bluetooth
     val Picture = PhosphorIcons.Fill.Monitor
     val Speaker = PhosphorIcons.Fill.SpeakerHigh
+    val Saver = PhosphorIcons.Bold.MoonStars
     fun volume(muted: Boolean, level: Int): ImageVector = when {
         muted || level == 0 -> PhosphorIcons.Fill.SpeakerX
         level < 40 -> PhosphorIcons.Fill.SpeakerLow
@@ -139,6 +141,8 @@ val SETTING_TILES = listOf(
     SettingTile("qs-bt", "Bluetooth", QuickGlyphs.Bluetooth, "com.android.tv.settings.ACCESSORIES_CONNECTED_DEVICES"),
     SettingTile("qs-pic", "Picture", QuickGlyphs.Picture, Settings.ACTION_DISPLAY_SETTINGS),
     SettingTile("qs-sound", "Sound", QuickGlyphs.Speaker, Settings.ACTION_SOUND_SETTINGS),
+    // Not a page of the TV's: Window's own screensaver, started right away
+    SettingTile("qs-saver", "Screensaver", QuickGlyphs.Saver, ""),
 )
 
 // The panel's rows, top to bottom, for the remote
@@ -147,6 +151,7 @@ fun quickRows(tv: TvState): List<List<String>> = listOf(
     listOf("qs-in-home") + tv.inputs.indices.map { "qs-in-$it" },
     listOf("qs-wifi", "qs-bt"),
     listOf("qs-pic", "qs-sound"),
+    listOf("qs-saver"),
     listOf("qs-pane", "qs-tvset"),
 )
 
@@ -215,21 +220,21 @@ fun QuickPanel(open: Boolean, focus: String, tv: TvState) {
             }
             VolumeBar(tv, focus == "qs-vol")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InputChip("Pane", focus == "qs-in-home", on = true, live = true, Modifier.weight(1f))
+                InputChip("Window", focus == "qs-in-home", on = true, live = true, Modifier.weight(1f))
                 tv.inputs.forEachIndexed { i, input -> InputChip(input.name, focus == "qs-in-$i", on = false, live = input.connected, Modifier.weight(1f)) }
             }
             SETTING_TILES.chunked(2).forEach { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     pair.forEach { tile ->
-                        val status = when (tile.id) { "qs-wifi" -> tv.network; "qs-bt" -> t("Remotes & accessories"); "qs-pic" -> t("Picture settings"); else -> t("Sound output") }
+                        val status = when (tile.id) { "qs-wifi" -> tv.network; "qs-bt" -> t("Remotes & accessories"); "qs-pic" -> t("Picture settings"); "qs-saver" -> t("Start now"); else -> t("Sound output") }
                         SettingBox(tile, status, focus == tile.id, Modifier.weight(1f))
                     }
                 }
             }
             Spacer(Modifier.weight(1f))
-            // Pane's own settings, and the TV's
+            // Window's own settings, and the TV's
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf(Triple("qs-pane", "Pane settings", Glyphs.Home), Triple("qs-tvset", "TV settings", Glyphs.Tv)).forEach { (id, label, icon) ->
+                listOf(Triple("qs-pane", "Window settings", Glyphs.Home), Triple("qs-tvset", "TV settings", Glyphs.Tv)).forEach { (id, label, icon) ->
                     Row(
                         Modifier.weight(1f).height(60.dp).ring(focus == id, 20.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = if (id == "qs-pane") .1f else .07f)),
                         horizontalArrangement = Arrangement.Center,

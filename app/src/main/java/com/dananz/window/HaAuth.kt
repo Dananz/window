@@ -31,11 +31,11 @@ import java.net.URLEncoder
 import java.security.MessageDigest
 import java.security.SecureRandom
 
-// Pane's sign-in to Home Assistant, as Home Assistant's own apps do it (OAuth with PKCE). Pane
+// Window's sign-in to Home Assistant, as Home Assistant's own apps do it (OAuth with PKCE). Window
 // names itself by a small page it serves on the home network (`http://<tv>:8899/`, a local address
 // Home Assistant accepts as an app's id), the phone signs in on Home Assistant's own page from a
 // QR code, and Home Assistant sends it back to that page with a code the TV trades for its tokens.
-// The refresh token keeps Pane signed in; it lapses only after 90 days unused.
+// The refresh token keeps Window signed in; it lapses only after 90 days unused.
 // A build with `ha.token` in local.properties uses that long-lived token until someone signs in.
 object Ha {
     private lateinit var sp: SharedPreferences
@@ -180,7 +180,7 @@ class SignIn(private val context: Context, private val scope: CoroutineScope) {
         val state = random(16)
         val challenge = Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray()), Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
         val auth = "$base/auth/authorize?response_type=code&client_id=${enc(clientId)}&redirect_uri=${enc(redirect)}&state=$state&code_challenge=$challenge&code_challenge_method=S256"
-        qr = qrBitmap(auth)
+        qr = qrImage(auth)
         phase = Phase.Qr
         job = scope.launch(Dispatchers.IO) {
             runCatching {
@@ -194,7 +194,7 @@ class SignIn(private val context: Context, private val scope: CoroutineScope) {
                         val ok = path.startsWith("/callback") && q["state"] == state && q["code"] != null
                         val tokens = if (ok) runCatching { Ha.post("/auth/token", mapOf("grant_type" to "authorization_code", "code" to q["code"]!!, "client_id" to clientId, "code_verifier" to verifier), base) }.getOrNull() else null
                         val signed = tokens?.has("access_token") == true
-                        val page = if (path.startsWith("/callback")) (if (signed) "Pane is connected. Look at your TV." else "That didn't work. Try again on the TV.") else "Pane"
+                        val page = if (path.startsWith("/callback")) (if (signed) "Window is connected. Look at your TV." else "That didn't work. Try again on the TV.") else "Window"
                         sock.getOutputStream().use { o ->
                             val html = "<!doctype html><meta name=viewport content='width=device-width'><link rel=redirect_uri href='$redirect'><body style='font:20px system-ui;background:#0b0b0d;color:#f4f0ea;display:grid;place-items:center;height:90vh;text-align:center'><p>$page</p>"
                             val b = html.toByteArray()
@@ -236,13 +236,6 @@ class SignIn(private val context: Context, private val scope: CoroutineScope) {
         return cm.getLinkProperties(cm.activeNetwork)?.linkAddresses?.map { it.address }?.firstOrNull { it is Inet4Address && !it.isLoopbackAddress }?.hostAddress
     }
 
-    private fun qrBitmap(text: String): ImageBitmap {
-        val m = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 0, 0, mapOf(EncodeHintType.MARGIN to 0))
-        val b = Bitmap.createBitmap(m.width, m.height, Bitmap.Config.ARGB_8888)
-        for (y in 0 until m.height) for (x in 0 until m.width) b.setPixel(x, y, if (m[x, y]) 0xFF0B0B0D.toInt() else -1)
-        return b.asImageBitmap()
-    }
-
     private fun random(n: Int): String {
         val a = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
         val r = SecureRandom()
@@ -252,4 +245,12 @@ class SignIn(private val context: Context, private val scope: CoroutineScope) {
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     companion object { const val PORT = 8899 }
+}
+
+// A QR code as an image, one pixel a module: drawn scaled up without smoothing
+fun qrImage(text: String): ImageBitmap {
+    val m = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 0, 0, mapOf(EncodeHintType.MARGIN to 0))
+    val b = Bitmap.createBitmap(m.width, m.height, Bitmap.Config.ARGB_8888)
+    for (y in 0 until m.height) for (x in 0 until m.width) b.setPixel(x, y, if (m[x, y]) 0xFF0B0B0D.toInt() else -1)
+    return b.asImageBitmap()
 }

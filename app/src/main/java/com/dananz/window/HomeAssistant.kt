@@ -9,7 +9,7 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneId
 
-// Home Assistant over its REST API, signed in as Pane (HaAuth.kt)
+// Home Assistant over its REST API, signed in as Window (HaAuth.kt)
 object HomeAssistant {
     private fun open(path: String): HttpURLConnection =
         (URL(Ha.url + path).openConnection() as HttpURLConnection).apply {

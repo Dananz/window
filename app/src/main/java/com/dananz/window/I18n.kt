@@ -6,8 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.util.Locale
 
-// Pane in English or Hebrew. English strings are the keys; Hebrew reads right to left and the
-// layout turns with it (the room photo and the camera do not). The language is Pane's own setting:
+// Window in English or Hebrew. English strings are the keys; Hebrew reads right to left and the
+// layout turns with it (the room photo and the camera do not). The language is Window's own setting:
 // the TV's, or English or Hebrew whatever the TV is set to.
 object Lang {
     // "system", "en" or "he"
@@ -31,8 +31,11 @@ object Lang {
     }
 }
 
-// A string in Pane's language
-fun t(s: String): String = if (Lang.he) HE[s] ?: s else s
+// A string in Window's language
+fun t(s: String): String = if (Lang.he) ltrArrows(HE[s] ?: s) else s
+
+// "◀ ▶" and "◀▶" are hints about the remote's arrows, which point the same way in any language
+private fun ltrArrows(s: String) = s.replace("◀ ▶", "\u2066◀ ▶\u2069").replace("◀▶", "\u2066◀▶\u2069")
 
 // A sentence with names or numbers in it, its words in the language's own order: f("Opening {0}", name)
 fun f(key: String, vararg parts: Any): String {
@@ -97,7 +100,7 @@ private val HE = mapOf(
     "Low fan" to "מאוורר נמוך",
     "Medium fan" to "מאוורר בינוני",
     "High fan" to "מאוורר גבוה",
-    "AC · {0}° now" to "מזגן · {0}° עכשיו",
+    "{0}° now" to "{0}° עכשיו",
     "Set to · {0}° now" to "יעד · {0}° בחדר עכשיו",
     "{0} to {1}°" to "{0} ל־{1}°",
     "▲▼ · OK done" to "▲▼ · OK לסיום",
@@ -170,20 +173,52 @@ private val HE = mapOf(
     "◀ ▶ volume · OK mute" to "▶ ◀ עוצמה · OK להשתקה",
     "Volume {0}" to "עוצמת קול {0}",
     "{0}, {1}" to "{0}, {1}",
-    "Back on Pane" to "חזרה ל־Pane",
+    "Back on Window" to "חזרה ל־Window",
     "Switching to {0}" to "עובר ל־{0}",
     "Opening {0} in Settings" to "פותח את {0} בהגדרות",
     "Tiles on the wall" to "אריחים במסך",
     "1 tile" to "אריח אחד",
     "{0} tiles" to "{0} אריחים",
     "Connected · {0}" to "מחובר · {0}",
+    "Start now" to "הפעלה עכשיו",
+    "OK to move" to "OK להזזה",
+    "Key added" to "המפתח נוסף",
+    "{0} on the network" to "{0} ברשת",
+    "Not set up" to "לא מוגדר",
+    "That didn't work: {0}" to "זה לא עבד: {0}",
+    "The key wasn't accepted" to "המפתח לא התקבל",
+    "Govee asked to slow down" to "Govee ביקשו להאט",
+    "The key works. Add your Govee lights in Tiles on the wall" to "המפתח עובד. הוסף את תאורת Govee באריחים במסך",
+    "Looking on your network…" to "מחפש ברשת…",
+    "Nothing answered. Turn on LAN Control for each light in the Govee Home app" to "אף אחד לא ענה. הפעל LAN Control לכל מנורה באפליקציית Govee Home",
+    "{0} found on the network. Add them in Tiles on the wall" to "נמצאו {0} ברשת. הוסף אותן באריחים במסך",
+    "API key" to "מפתח API",
+    "Not set" to "לא הוגדר",
+    "Find lights on the network" to "חיפוש מנורות ברשת",
+    "{0} found" to "נמצאו {0}",
+    "Remove the key" to "הסרת המפתח",
+    "On the network: turn on LAN Control for each light in the Govee Home app. Faster, and needs no key." to "ברשת: הפעל LAN Control לכל מנורה באפליקציית Govee Home. מהיר יותר, ובלי מפתח.",
+    "With a key: in the Govee Home app, Profile › Settings › Apply for API Key. It arrives by email. Type or paste it here (the Google TV app on your phone can paste)." to "עם מפתח: באפליקציית Govee Home, פרופיל › הגדרות › Apply for API Key. הוא מגיע במייל. הקלד או הדבק אותו כאן (אפליקציית Google TV בטלפון יודעת להדביק).",
     "Not connected" to "לא מחובר",
+    "User Code" to "User Code",
+    "Not signed in" to "לא מחובר",
+    "Scan with Smart Life or Tuya Smart" to "סרוק עם Smart Life או Tuya Smart",
+    "In the app, tap + at the top, then Scan, and confirm the sign-in on your phone." to "באפליקציה, הקש על + למעלה, ואז סריקה, ואשר את הכניסה בטלפון.",
+    "Add your Tuya lights, plugs and curtains in Tiles on the wall." to "הוסף את התאורה, השקעים והווילונות של Tuya באריחים במסך.",
+    "In Smart Life or Tuya Smart: Me › the gear at the top › Account and Security. The User Code is at the bottom. Type it here, and the TV shows a QR code to scan with the app. No developer account needed." to "ב-Smart Life או Tuya Smart: אני › גלגל השיניים למעלה › חשבון ואבטחה. ה-User Code מופיע למטה. הקלד אותו כאן, והטלוויזיה תציג קוד QR לסריקה באפליקציה. בלי חשבון מפתחים.",
+    "User Code Incorrect" to "ה-User Code שגוי",
+    "Sensibo asked to slow down" to "Sensibo ביקשו להאט",
+    "Checking…" to "בודק…",
+    "Connected. Add your {0} devices in Tiles on the wall" to "מחובר. הוסף את מכשירי {0} באריחים במסך",
+    "Check the connection" to "בדיקת החיבור",
+    "Tuya said no" to "Tuya סירבו",
+    "Sign in at home.sensibo.com, open the menu › API, and add a key. Type or paste it here (the Google TV app on your phone can paste). Each Sensibo shows as a big AC control." to "היכנס ל-home.sensibo.com, פתח את התפריט › API, וצור מפתח. הקלד או הדבק אותו כאן (אפליקציית Google TV בטלפון יודעת להדביק). כל Sensibo מופיע כפקד מזגן גדול.",
     "In this order, left to right" to "בסדר הזה, מימין לשמאל",
-    "{0} of {1} places" to "{0} מתוך {1} מקומות",
+    "{0} tiles" to "{0} אריחים",
     "Rename" to "שינוי שם",
     "Remove" to "הסרה",
     "▲▼ move · OK done" to "▲▼ הזזה · OK סיום",
-    "The big AC control, always last" to "השליטה הגדולה במזגן, תמיד אחרונה",
+    "A big AC control, at the end" to "שליטה גדולה במזגן, בסוף השורה",
     "Add from Home Assistant" to "הוספה מ־Home Assistant",
     "Show" to "הצגה",
     "Everything" to "הכל",
@@ -193,7 +228,6 @@ private val HE = mapOf(
     "Curtains" to "וילונות",
     "Scenes" to "סצנות",
     "{0} light segments and settings switches are left out" to "{0} מקטעי תאורה ומתגי הגדרות לא מוצגים",
-    "The wall is full. Remove a tile first" to "המסך מלא. קודם הסר אריח",
     "Living room" to "סלון",
     "Bedroom" to "חדר שינה",
     "Studio" to "סטודיו",
@@ -210,7 +244,7 @@ private val HE = mapOf(
     "Connect Home Assistant" to "חיבור Home Assistant",
     "Sign out" to "התנתקות",
     "Lights and the AC answer in about a second · Home Assistant {0}" to "האורות והמזגן מגיבים תוך שנייה · Home Assistant {0}",
-    "The wall shows no lights or AC until Pane is connected" to "בלי חיבור, המסך לא מציג אורות ומזגן",
+    "The wall shows no lights or AC until Window is connected" to "בלי חיבור, המסך לא מציג אורות ומזגן",
     "Looking for Home Assistant on your network…" to "מחפש Home Assistant ברשת…",
     "Found on your network" to "נמצא ברשת",
     "Type the address" to "הקלדת הכתובת",
@@ -219,11 +253,11 @@ private val HE = mapOf(
     "Waiting for your phone…" to "מחכה לטלפון…",
     "Connected to Home Assistant" to "מחובר ל־Home Assistant",
     "Type the address with the remote, as http://homeassistant.local:8123" to "הקלד את הכתובת בשלט, למשל http://homeassistant.local:8123",
-    "Pane settings" to "הגדרות Pane",
+    "Window settings" to "הגדרות Window",
     "TV settings" to "הגדרות הטלוויזיה",
     "Home screen" to "מסך הבית",
     "Open on start" to "פתיחה בהדלקה",
-    "When the TV turns on, this app opens over Pane" to "כשהטלוויזיה נדלקת, האפליקציה הזאת נפתחת מעל Pane",
+    "When the TV turns on, this app opens over Window" to "כשהטלוויזיה נדלקת, האפליקציה הזאת נפתחת מעל Window",
     "Outside the window" to "מה רואים מהחלון",
     "Clock" to "שעון",
     "24-hour" to "24 שעות",
@@ -232,9 +266,9 @@ private val HE = mapOf(
     "Favourites on the shelf, in their order" to "המועדפים במדף, בסדר שלהם",
     "Language" to "שפה",
     "Follow the TV" to "לפי הטלוויזיה",
-    "Hebrew reads right to left, and Pane turns with it" to "עברית נקראת מימין לשמאל, ו-Pane מתהפך איתה",
+    "Hebrew reads right to left, and Window turns with it" to "עברית נקראת מימין לשמאל, ו-Window מתהפך איתה",
     "Screensaver" to "שומר מסך",
-    "Pane screensaver" to "שומר המסך של Pane",
+    "Window screensaver" to "שומר המסך של Window",
     "In through the window, then the view with the time" to "נכנס דרך החלון, ואז הנוף עם השעה",
     "Starts after" to "מתחיל אחרי",
     "{0} min" to "{0} דק׳",
@@ -260,9 +294,9 @@ private val HE = mapOf(
     "Ceiling, Kitchen, Miznon" to "תקרה, מטבח, מזנון",
     "Remote buttons" to "כפתורי השלט",
     "Home" to "בית",
-    "Opens Pane" to "פותח את Pane",
+    "Opens Window" to "פותח את Window",
     "Input" to "מקור",
-    "Pane inputs" to "המקורות של Pane",
+    "Window inputs" to "המקורות של Window",
     "TV inputs" to "המקורות של הטלוויזיה",
     "YouTube button" to "כפתור YouTube",
     "Netflix button" to "כפתור Netflix",
@@ -271,19 +305,19 @@ private val HE = mapOf(
     "Reduced" to "מופחתות",
     "Room drifts with the apps" to "החדר זז עם האפליקציות",
     "About" to "אודות",
-    "Pane" to "Pane",
+    "Window" to "Window",
     "1.4 · 24 Oct 2026" to "1.4 · 24 באוק׳ 2026",
     "Restore Google TV home" to "החזרת מסך הבית של Google TV",
-    "Pane stays installed" to "Pane נשאר מותקן",
+    "Window stays installed" to "Window נשאר מותקן",
     "Hold OK on an app to move it" to "לחיצה ארוכה על OK באפליקציה כדי להזיז אותה",
     "Screensaver starting" to "שומר המסך מתחיל",
     "Opening TV settings" to "פותח את הגדרות הטלוויזיה",
-    "Google TV home is back. Pane stays installed" to "מסך הבית של Google TV חזר. Pane נשאר מותקן",
-    "The TV starts on Pane" to "הטלוויזיה נפתחת על Pane",
-    "The TV starts on Pane, then opens" to "הטלוויזיה נפתחת על Pane, ואז פותחת את",
+    "Google TV home is back. Window stays installed" to "מסך הבית של Google TV חזר. Window נשאר מותקן",
+    "The TV starts on Window" to "הטלוויזיה נפתחת על Window",
+    "The TV starts on Window, then opens" to "הטלוויזיה נפתחת על Window, ואז פותחת את",
     "◀ ▶ change · OK choose · Back" to "▶ ◀ שינוי · OK בחירה · Back חזרה",
     // Native only
     "Sign-in didn't work. Try again" to "ההתחברות לא הצליחה. נסה שוב",
     "Add tiles" to "הוספת אריחים",
-    "Lights, the AC and more, from Pane settings" to "אורות, מזגן ועוד, מהגדרות Pane",
+    "Lights, the AC and more, from Window settings" to "אורות, מזגן ועוד, מהגדרות Window",
 )

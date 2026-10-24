@@ -89,7 +89,7 @@ private fun Shelf(apps: List<TvApp>, focused: Int?, rtl: Boolean) {
     Box(Modifier.fillMaxSize()) {
         // The name fades over the last one as focus moves along the shelf
         Crossfade(
-            if (active) apps[center].name else "",
+            if (active) apps[center].let { a -> if (a.shortcut != null) t(a.name) else a.name } else "",
             Modifier.fillMaxWidth().offset(y = 235.dp).graphicsLayer { compositingStrategy = CompositingStrategy.ModulateAlpha; alpha = title.value },
             settle(Motion.TEXT), label = "title",
         ) { name ->

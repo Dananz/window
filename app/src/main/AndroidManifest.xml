@@ -9,10 +9,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- The Wi-Fi network's name: Android shows it only to apps that may know the location -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Govee lights answer a multicast scan on the home network -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- All apps can uninstall an app, through the system's own confirm -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
-    <!-- Granted once over adb: Pane switches its Home button service back on after an update or force stop -->
+    <!-- Granted once over adb: Window switches its Home button service back on after an update or force stop -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <!-- When the screensaver starts (the screen-off timeout); allowed over adb with appops WRITE_SETTINGS -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
@@ -58,7 +60,7 @@
         <!-- The screensaver: in through the window to the view, with the time and the weather -->
         <service
             android:name=".Screensaver"
-            android:label="Pane"
+            android:label="Window"
             android:exported="true"
             android:permission="android.permission.BIND_DREAM_SERVICE">
             <intent-filter>
@@ -67,10 +69,10 @@
             </intent-filter>
         </service>
 
-        <!-- The remote's Home button, back to Pane -->
+        <!-- The remote's Home button, back to Window -->
         <service
             android:name=".HomeButton"
-            android:label="Pane home button"
+            android:label="Window home button"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>

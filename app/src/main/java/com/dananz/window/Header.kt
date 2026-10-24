@@ -62,7 +62,7 @@ fun Modifier.ring(focused: Boolean, radius: Dp, color: Color = Ink.text): Modifi
     }
 }
 
-// The time as settings have it (24-hour or 12-hour), and the date in Pane's language
+// The time as settings have it (24-hour or 12-hour), and the date in Window's language
 private val H24 = DateTimeFormatter.ofPattern("HH:mm")
 private val H12 = DateTimeFormatter.ofPattern("h:mm")
 val TIME: DateTimeFormatter get() = if (Prefs.clock24) H24 else H12

@@ -1,5 +1,9 @@
 package com.dananz.window
 
+import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.lazy.itemsIndexed
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
@@ -68,9 +72,12 @@ import com.adamglin.phosphoricons.bold.PencilSimple
 import com.adamglin.phosphoricons.bold.Plus
 import com.adamglin.phosphoricons.bold.X
 import com.adamglin.phosphoricons.fill.Fan as FanFill
+import com.adamglin.phosphoricons.fill.Globe
 import com.adamglin.phosphoricons.fill.House
 import com.adamglin.phosphoricons.fill.Info
+import com.adamglin.phosphoricons.fill.Key
 import com.adamglin.phosphoricons.fill.Keyboard
+import com.adamglin.phosphoricons.fill.Trash
 import com.adamglin.phosphoricons.fill.Lightbulb
 import com.adamglin.phosphoricons.fill.MoonStars
 import com.adamglin.phosphoricons.fill.Power
@@ -84,8 +91,8 @@ import com.adamglin.phosphoricons.fill.WifiHigh
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-// Pane settings, in the quick panel's own sheet (prototype settings/B, built into control-center/A):
-// OK on Pane settings turns the sheet into its sections, OK on one slides its page in, Back slides
+// Window settings, in the quick panel's own sheet (prototype settings/B, built into control-center/A):
+// OK on Window settings turns the sheet into its sections, OK on one slides its page in, Back slides
 // it out. Smart home goes a page deeper, to the tiles on the wall and the Home Assistant sign-in.
 // Left and right change a value in place, OK flips a switch or runs an action.
 
@@ -102,20 +109,17 @@ private val SECTIONS = listOf(
     )),
     Section("lang", "Language", PhosphorIcons.Fill.Translate, listOf(Row("lang", "Language", RowKind.Choice))),
     Section("saver", "Screensaver", PhosphorIcons.Fill.MoonStars, listOf(
-        Row("saver", "Pane screensaver", RowKind.Toggle), Row("after", "Starts after", RowKind.Choice),
+        Row("saver", "Window screensaver", RowKind.Toggle), Row("after", "Starts after", RowKind.Choice),
         Row("shows", "Shows", RowKind.Choice), Row("moves", "Clock moves", RowKind.Choice), Row("preview", "Preview", RowKind.Action),
     )),
-    Section("smart", "Smart home", PhosphorIcons.Fill.Lightbulb, listOf(Row("tiles", "Tiles on the wall", RowKind.Link), Row("ha", "Home Assistant", RowKind.Link))),
+    Section("smart", "Smart home", PhosphorIcons.Fill.Lightbulb, listOf(Row("tiles", "Tiles on the wall", RowKind.Link), Row("ha", "Home Assistant", RowKind.Link), Row("govee", "Govee", RowKind.Link), Row("sensibo", "Sensibo", RowKind.Link), Row("tuya", "Tuya", RowKind.Link))),
     Section("motion", "Motion", PhosphorIcons.Fill.Sparkle, listOf(Row("motion", "Animations", RowKind.Choice), Row("drift", "Room drifts with the apps", RowKind.Toggle))),
-    Section("about", "About", PhosphorIcons.Fill.Info, listOf(Row("version", "Pane", RowKind.Info), Row("tv", "TV settings", RowKind.Action))),
+    Section("about", "About", PhosphorIcons.Fill.Info, listOf(Row("version", "Window", RowKind.Info), Row("tv", "TV settings", RowKind.Action))),
 )
 
 // An entity Home Assistant has, that could be a tile
 data class Entity(val entity: String, val name: String, val kind: Kind)
 private val TYPES = listOf(null to "Everything", Kind.Light to "Lights", Kind.Climate to "AC", Kind.Switch to "Switches", Kind.Fan to "Fans", Kind.Cover to "Curtains", Kind.Scene to "Scenes")
-// What fits along the wall beside All lights: each tile one app card wide, the AC two
-private const val ROOM = 9
-private fun width(ts: List<Tile>) = ts.size + if (ts.any { it.kind == Kind.Climate }) 1 else 0
 
 // What the settings ask of the home screen
 interface SettingsHost {
@@ -185,6 +189,13 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         "drift" -> t(if (Prefs.drift) "On" else "Off")
         "tiles" -> if (Prefs.tiles.size == 1) t("1 tile") else f("{0} tiles", Prefs.tiles.size)
         "ha" -> if (Ha.linked) f("Connected · {0}", Ha.server.substringBefore(':')) else t("Not connected")
+        "govee" -> when {
+            Govee.key.isNotEmpty() -> t("Key added")
+            Govee.lan.isNotEmpty() -> f("{0} on the network", Govee.lan.size)
+            else -> t("Not set up")
+        }
+        "sensibo" -> t(if (Sensibo.key.isNotEmpty()) "Key added" else "Not set up")
+        "tuya" -> if (Tuya.linked) t("Connected") else t("Not set up")
         "version" -> BuildConfig.VERSION_NAME
         else -> ""
     }
@@ -230,6 +241,9 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
             }
             sub == "tiles" -> tilesOk(f)
             sub == "ha" -> haOk(f)
+            sub == "govee" -> goveeOk(f)
+            sub == "sensibo" -> sensiboOk(f)
+            sub == "tuya" -> tuyaOk(f)
         }
     }
 
@@ -237,6 +251,9 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         val f = focus
         if (sub == "tiles") return tilesMove(f, a)
         if (sub == "ha") return haMove(f, a)
+        if (sub == "govee") return goveeMove(f, a)
+        if (sub == "sensibo") return listMove(sensiboIds(), f, a)
+        if (sub == "tuya") return tuyaMove(f, a)
         if (f.startsWith("sec-")) {
             val i = SECTIONS.indexOfFirst { "sec-${it.id}" == f }
             when (a) {
@@ -276,8 +293,13 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
 
     private fun openSub(id: String) {
         sub = id; lastSub = id
-        if (id == "tiles") { focus = if (Prefs.tiles.isEmpty()) "tw-type" else "tw-w-0"; loadCatalog() }
-        else focus = haFirst()
+        when (id) {
+            "tiles" -> { focus = if (Prefs.tiles.isEmpty()) "tw-type" else "tw-w-0"; loadCatalog() }
+            "govee" -> { focus = "gv-key"; note = null }
+            "sensibo" -> { focus = "sb-key"; note = null }
+            "tuya" -> { Tuya.cancel(); focus = tuyaIds().first(); note = null }
+            else -> focus = haFirst()
+        }
     }
 
     // ---------- Tiles on the wall ----------
@@ -287,9 +309,8 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         Prefs.tiles.indices.map { listOf("tw-w-$it", "tw-r-$it", "tw-x-$it") } + listOf(listOf("tw-type")) + list.indices.map { listOf("tw-a-$it") }
 
     private fun loadCatalog() = scope.launch {
-        runCatching { HomeAssistant.states() }.onSuccess { a ->
-            val all = (0 until a.length()).map { a.getJSONObject(it) }
-            val picked = all.mapNotNull { o ->
+        val ha = runCatching { HomeAssistant.states() }.map { a ->
+            (0 until a.length()).map { a.getJSONObject(it) }.mapNotNull { o ->
                 val id = o.getString("entity_id")
                 val name = o.optJSONObject("attributes")?.optString("friendly_name").orEmpty().ifBlank { id }
                 val kind = when (id.substringBefore('.')) {
@@ -298,9 +319,19 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
                 }
                 Entity(id, name.trim(), kind)
             }
-            catalog = picked.filter { it.useful() }.sortedWith(compareBy({ it.kind.ordinal }, { it.name.lowercase() }))
-            hidden = picked.size - catalog.size
-        }.onFailure { host.toast(t("Not connected")) }
+        }
+        val picked = ha.getOrDefault(emptyList())
+        fun show(more: List<Entity>) { catalog = (picked.filter { it.useful() } + more).sortedWith(compareBy({ it.kind.ordinal }, { it.name.lowercase() })) }
+        show(emptyList())
+        hidden = picked.size - picked.count { it.useful() }
+        // Govee's own devices, by key or on the network, join Home Assistant's once they answer
+        val govee = runCatching { Govee.devices() }.getOrDefault(emptyList()).map { Entity(it.entity, it.name, if (it.dims) Kind.Light else Kind.Switch) }
+        show(govee)
+        // Then the cloud accounts: Sensibo's ACs and Tuya's lights, plugs and curtains
+        val cloud = govee + runCatching { Sensibo.pods() }.getOrDefault(emptyList()).map { Entity(it.entity, it.name, Kind.Climate) } +
+            runCatching { Tuya.devices() }.getOrDefault(emptyList()).map { Entity(it.entity, it.name, it.kind) }
+        show(cloud)
+        if (ha.isFailure && cloud.isEmpty()) host.toast(t("Not connected"))
     }
 
     // The parts no one switches from a sofa: light segments, each lamp's settings switches, one-setting scenes
@@ -329,7 +360,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
                 if (tiles.any { it.entity == e.entity }) Prefs.changeTiles(tiles.filter { it.entity != e.entity })
                 else {
                     val next = tiles + Tile(e.entity, e.name, e.kind)
-                    if (width(next) > ROOM) host.toast(t("The wall is full. Remove a tile first")) else Prefs.changeTiles(next)
+                    Prefs.changeTiles(next)
                 }
             }
         }
@@ -364,6 +395,15 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         val v = draft.trim()
         if (e.startsWith("tw-r-") && v.isNotEmpty()) Prefs.changeTiles(Prefs.tiles.mapIndexed { k, x -> if (k == idx(e)) x.copy(name = v) else x })
         if (e == "ha-type" && v.isNotEmpty()) signIn.start((if (v.startsWith("http")) v else "http://$v").trimEnd('/')).also { focus = "ha-cancel" }
+        if (e == "gv-key" && v.isNotEmpty()) { Govee.changeKey(v); checkGovee() }
+        if (e == "sb-key" && v.isNotEmpty()) { Sensibo.changeKey(v); checkCloud("Sensibo") { Sensibo.check() } }
+        if (e == "ty-code" && v.isNotEmpty()) scope.launch {
+            busy = true; note = t("Checking…")
+            val err = Tuya.start(scope, v)
+            busy = false
+            note = err?.let { f("That didn't work: {0}", t(it)) }
+            focus = tuyaIds().first()
+        }
         editing = null
     }
 
@@ -394,6 +434,87 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
             Arrow.Right -> {}
         }
     }
+
+    // ---------- Govee ----------
+
+    // What the Govee page last found out, said under its rows
+    var note by mutableStateOf<String?>(null)
+        private set
+    var busy by mutableStateOf(false)
+        private set
+
+    private fun goveeIds() = listOf("gv-key", "gv-scan") + if (Govee.key.isNotEmpty()) listOf("gv-clear") else emptyList()
+
+    private fun checkGovee() = scope.launch {
+        busy = true
+        note = Govee.check()?.let { f("That didn't work: {0}", t(it)) } ?: t("The key works. Add your Govee lights in Tiles on the wall")
+        busy = false
+    }
+
+    private fun goveeOk(f: String) {
+        when (f) {
+            "gv-key" -> { draft = ""; editing = "gv-key" }
+            "gv-scan" -> scope.launch {
+                busy = true; note = t("Looking on your network…")
+                val n = Govee.scan().size
+                note = if (n == 0) t("Nothing answered. Turn on LAN Control for each light in the Govee Home app") else f("{0} found on the network. Add them in Tiles on the wall", n)
+                busy = false
+            }
+            "gv-clear" -> { Govee.changeKey(""); note = null; focus = "gv-key" }
+        }
+    }
+
+    private fun goveeMove(f: String, a: Arrow) {
+        val ids = goveeIds()
+        when (a) {
+            Arrow.Up, Arrow.Down -> focus = ids[(ids.indexOf(f).coerceAtLeast(0) + if (a == Arrow.Down) 1 else -1).coerceIn(0, ids.lastIndex)]
+            Arrow.Left -> { focus = "row-govee"; sub = null }
+            Arrow.Right -> {}
+        }
+    }
+
+    // ---------- Sensibo and Tuya ----------
+
+    private fun checkCloud(name: String, check: suspend () -> String?) = scope.launch {
+        busy = true; note = t("Checking…")
+        note = check()?.let { f("That didn't work: {0}", t(it)) } ?: f("Connected. Add your {0} devices in Tiles on the wall", name)
+        busy = false
+    }
+
+    private fun listMove(ids: List<String>, f: String, a: Arrow) {
+        when (a) {
+            Arrow.Up, Arrow.Down -> focus = ids[(ids.indexOf(f).coerceAtLeast(0) + if (a == Arrow.Down) 1 else -1).coerceIn(0, ids.lastIndex)]
+            Arrow.Left -> { focus = "row-$sub"; sub = null }
+            Arrow.Right -> {}
+        }
+    }
+
+    private fun sensiboIds() = listOf("sb-key") + if (Sensibo.key.isNotEmpty()) listOf("sb-check", "sb-clear") else emptyList()
+
+    private fun sensiboOk(f: String) {
+        when (f) {
+            "sb-key" -> { draft = ""; editing = "sb-key" }
+            "sb-check" -> checkCloud("Sensibo") { Sensibo.check() }
+            "sb-clear" -> { Sensibo.changeKey(""); note = null; focus = "sb-key" }
+        }
+    }
+
+    private fun tuyaIds() = when {
+        Tuya.phase != Tuya.Phase.Idle -> listOf("ty-cancel")
+        Tuya.linked -> listOf("ty-check", "ty-out")
+        else -> listOf("ty-code")
+    }
+
+    private fun tuyaOk(f: String) {
+        when (f) {
+            "ty-code" -> { draft = ""; editing = "ty-code" }
+            "ty-cancel" -> { Tuya.cancel(); note = null; focus = tuyaIds().first() }
+            "ty-check" -> checkCloud("Tuya") { Tuya.check() }
+            "ty-out" -> scope.launch { Tuya.signOut(); note = null; focus = tuyaIds().first() }
+        }
+    }
+
+    private fun tuyaMove(f: String, a: Arrow) = listMove(tuyaIds(), f, a)
 
     // A search that found something, or a sign-in that finished, moves the focus with it
     fun follow() {
@@ -451,7 +572,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
     @Composable
     private fun ColumnScope.Sections() {
         val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-        Title(t("Pane settings"), false)
+        Title(t("Window settings"), false)
         SECTIONS.forEach { s ->
             val first = if (s.id == "home") s.rows[1] else s.rows.first { it.kind != RowKind.Action }
             Row(
@@ -476,7 +597,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         val s = section
         Title(t(s.label), true)
         s.rows.forEach { r ->
-            val note = if (r.id == "start") (Prefs.startApp?.let { "${t("The TV starts on Pane, then opens")} ${appName(it)}" } ?: t("The TV starts on Pane")) else null
+            val note = if (r.id == "start") (Prefs.startApp?.let { "${t("The TV starts on Window, then opens")} ${appName(it)}" } ?: t("The TV starts on Window")) else null
             SettingRow(r, focus == "row-${r.id}", note)
         }
         Spacer(Modifier.weight(1f))
@@ -522,8 +643,8 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
     @Composable
     private fun ColumnScope.Deeper() {
         val which = sub ?: lastSub
-        Title(t(if (which == "ha") "Home Assistant" else "Tiles on the wall"), true)
-        if (which == "ha") HaPage() else TilesPage()
+        Title(t(when (which) { "ha" -> "Home Assistant"; "govee" -> "Govee"; "sensibo" -> "Sensibo"; "tuya" -> "Tuya"; else -> "Tiles on the wall" }), true)
+        when (which) { "ha" -> HaPage(); "govee" -> GoveePage(); "sensibo" -> SensiboPage(); "tuya" -> TuyaPage(); else -> TilesPage() }
     }
 
     // ---------- The tiles page ----------
@@ -540,9 +661,21 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
             focus.startsWith("tw-") -> 1 + idx(focus)
             else -> 0
         }
-        LaunchedEffect(at) { listState.animateScrollToItem((at - 3).coerceAtLeast(0)) }
+        // Scroll only when the focused row would leave the view, and only as far as it needs: scrolling the
+        // whole list on every press is what made a long list stutter on the TV
+        LaunchedEffect(at) {
+            val info = listState.layoutInfo
+            val row = info.visibleItemsInfo.firstOrNull { it.index == at }
+            val margin = 96
+            when {
+                row == null -> listState.scrollToItem((at - 3).coerceAtLeast(0))
+                row.offset < info.viewportStartOffset + margin -> listState.animateScrollBy((row.offset - info.viewportStartOffset - margin).toFloat())
+                row.offset + row.size > info.viewportEndOffset - margin -> listState.animateScrollBy((row.offset + row.size - info.viewportEndOffset + margin).toFloat())
+            }
+        }
+        val added = remember(tiles) { tiles.mapTo(HashSet()) { it.entity } }
         LazyColumn(Modifier.weight(1f), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { Text("${t("In this order, left to right")} · ${f("{0} of {1} places", width(tiles), ROOM)}", color = Ink.text.copy(alpha = .55f), fontFamily = Golos, fontSize = 15.sp) }
+            item { Text("${t("In this order, left to right")} · ${f("{0} tiles", tiles.size)}", color = Ink.text.copy(alpha = .55f), fontFamily = Golos, fontSize = 15.sp) }
             tiles.forEachIndexed { i, x -> item(key = "w" + x.entity) { WallRow(i, x) } }
             item { Text(t("Add from Home Assistant"), Modifier.padding(top = 16.dp), color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.SemiBold, fontSize = 20.sp) }
             item {
@@ -552,10 +685,10 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(t("Show"), Modifier.weight(1f), color = Ink.text.copy(alpha = .6f), fontFamily = Golos, fontSize = 17.sp)
-                    Text("◀  ${t(TYPES[type].second)}  ▶", color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 19.sp)
+                    Text(if (Lang.he) "▶  ${t(TYPES[type].second)}  ◀" else "◀  ${t(TYPES[type].second)}  ▶", color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 19.sp)
                 }
             }
-            items.forEachIndexed { i, e -> item(key = "a" + e.entity) { AddRow(i, e, tiles.any { it.entity == e.entity }) } }
+            itemsIndexed(items, key = { _, e -> "a" + e.entity }) { i, e -> AddRow(i, e, e.entity in added) }
             item { Text(f("{0} light segments and settings switches are left out", hidden), Modifier.padding(top = 8.dp, bottom = 12.dp), color = Ink.text.copy(alpha = .4f), fontFamily = Golos, fontSize = 14.sp) }
         }
     }
@@ -575,8 +708,9 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
                     if (editing == "tw-r-$i") EditField() else Text(t(x.name), color = ink, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 19.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val sub = when {
                         m -> t("▲▼ move · OK done")
-                        x.kind == Kind.Climate && Prefs.tiles.firstOrNull { it.kind == Kind.Climate } == x -> t("The big AC control, always last")
-                        else -> x.entity
+                        focus == "tw-w-$i" -> t("OK to move")
+                        x.kind == Kind.Climate -> t("A big AC control, at the end")
+                        else -> source(x.entity)
                     }
                     Text(sub, color = ink.copy(alpha = .5f), fontFamily = Golos, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -596,7 +730,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
             Icon(kindIcon(e.kind), null, Modifier.size(22.dp), tint = Ink.text.copy(alpha = .7f))
             Column(Modifier.weight(1f)) {
                 Text(e.name, color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(e.entity, color = Ink.text.copy(alpha = .45f), fontFamily = Golos, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(source(e.entity), color = Ink.text.copy(alpha = .45f), fontFamily = Golos, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Box(Modifier.size(34.dp).clip(CircleShape).background(if (added) Ink.accent else Color.White.copy(alpha = .1f)), contentAlignment = Alignment.Center) {
                 Icon(if (added) PhosphorIcons.Bold.Check else PhosphorIcons.Bold.Plus, null, Modifier.size(18.dp), tint = if (added) Color(0xFF1B1308) else Ink.text)
@@ -616,7 +750,9 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
     @Composable
     private fun EditField() {
         val fr = remember { FocusRequester() }
-        LaunchedEffect(Unit) { fr.requestFocus() }
+        val keyboard = LocalSoftwareKeyboardController.current
+        // Some TVs' keyboards wait to be asked: focus the field, then ask for the keyboard
+        LaunchedEffect(Unit) { fr.requestFocus(); delay(150); keyboard?.show() }
         BasicTextField(
             draft, { draft = it },
             Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = .12f)).padding(horizontal = 8.dp, vertical = 4.dp).focusRequester(fr),
@@ -643,7 +779,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
                         Text(t(if (Ha.linked) "Connected" else "Not connected"), color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 20.sp)
                         Text(
                             if (Ha.linked) listOf(Ha.home, Ha.version.takeIf { it.isNotEmpty() }?.let { "Home Assistant $it" }).filterNotNull().filter { it.isNotEmpty() }.joinToString(" · ")
-                            else t("The wall shows no lights or AC until Pane is connected"),
+                            else t("The wall shows no lights or AC until Window is connected"),
                             color = Ink.text.copy(alpha = .55f), fontFamily = Golos, fontSize = 15.sp,
                         )
                     }
@@ -680,6 +816,97 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         }
     }
 
+    // ---------- The Govee page ----------
+
+    @Composable
+    private fun ColumnScope.GoveePage() {
+        val k = Govee.key
+        if (editing == "gv-key") {
+            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = .12f)).padding(16.dp)) { EditField() }
+        } else HaRow("gv-key", PhosphorIcons.Fill.Key, t("API key"), if (k.isEmpty()) t("Not set") else "\u2066••••" + k.takeLast(4) + "\u2069")
+        HaRow("gv-scan", PhosphorIcons.Fill.WifiHigh, t("Find lights on the network"), if (Govee.lan.isNotEmpty()) f("{0} found", Govee.lan.size) else null)
+        if (k.isNotEmpty()) HaRow("gv-clear", PhosphorIcons.Fill.Trash, t("Remove the key"), danger = true)
+        note?.let { Text(it, color = Ink.text.copy(alpha = if (busy) .55f else .8f), fontFamily = Golos, fontSize = 16.sp) }
+        Spacer(Modifier.weight(1f))
+        Text(
+            t("On the network: turn on LAN Control for each light in the Govee Home app. Faster, and needs no key.") + "\n\n" +
+                t("With a key: in the Govee Home app, Profile › Settings › Apply for API Key. It arrives by email. Type or paste it here (the Google TV app on your phone can paste)."),
+            color = Ink.text.copy(alpha = .5f), fontFamily = Golos, fontSize = 15.sp, lineHeight = 21.sp,
+        )
+    }
+
+    // ---------- The Sensibo and Tuya pages ----------
+
+    @Composable
+    private fun ColumnScope.KeyRow(id: String, label: String, value: String, secret: Boolean = true) {
+        if (editing == id) {
+            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = .12f)).padding(16.dp)) { EditField() }
+        } else HaRow(id, PhosphorIcons.Fill.Key, label, if (value.isEmpty()) t("Not set") else if (secret) "\u2066••••" + value.takeLast(4) + "\u2069" else "\u2066" + value + "\u2069")
+    }
+
+    @Composable
+    private fun ColumnScope.Note() {
+        note?.let { Text(it, color = Ink.text.copy(alpha = if (busy) .55f else .8f), fontFamily = Golos, fontSize = 16.sp) }
+    }
+
+    @Composable
+    private fun ColumnScope.Help(text: String) {
+        Spacer(Modifier.weight(1f))
+        Text(text, color = Ink.text.copy(alpha = .5f), fontFamily = Golos, fontSize = 15.sp, lineHeight = 21.sp)
+    }
+
+    @Composable
+    private fun ColumnScope.SensiboPage() {
+        KeyRow("sb-key", t("API key"), Sensibo.key)
+        if (Sensibo.key.isNotEmpty()) {
+            HaRow("sb-check", PhosphorIcons.Fill.WifiHigh, t("Check the connection"))
+            HaRow("sb-clear", PhosphorIcons.Fill.Trash, t("Remove the key"), danger = true)
+        }
+        Note()
+        Help(t("Sign in at home.sensibo.com, open the menu › API, and add a key. Type or paste it here (the Google TV app on your phone can paste). Each Sensibo shows as a big AC control."))
+    }
+
+    @Composable
+    private fun ColumnScope.TuyaPage() {
+        when {
+            Tuya.phase == Tuya.Phase.Qr -> {
+                Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Tuya.qr?.let { q ->
+                        Box(Modifier.padding(top = 8.dp).size(280.dp).clip(RoundedCornerShape(24.dp)).background(Color.White).padding(20.dp)) {
+                            Image(q, null, Modifier.fillMaxSize(), filterQuality = androidx.compose.ui.graphics.FilterQuality.None)
+                        }
+                    }
+                    Text(t("Scan with Smart Life or Tuya Smart"), color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 20.sp)
+                    Text(t("In the app, tap + at the top, then Scan, and confirm the sign-in on your phone."), color = Ink.text.copy(alpha = .6f), fontFamily = Golos, fontSize = 15.sp, textAlign = TextAlign.Center)
+                    Text(t("Waiting for your phone…"), color = Ink.text.copy(alpha = .5f), fontFamily = Golos, fontSize = 15.sp)
+                }
+                HaRow("ty-cancel", PhosphorIcons.Bold.X, t("Cancel"))
+            }
+            Tuya.phase == Tuya.Phase.Waiting -> HaRow("ty-cancel", PhosphorIcons.Bold.X, t("Cancel"))
+            Tuya.linked -> {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White.copy(alpha = .06f)).padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Box(Modifier.size(12.dp).clip(CircleShape).background(Color(0xFF7BE0A0)))
+                    Column {
+                        Text(t("Connected"), color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 20.sp)
+                        if (Tuya.account.isNotEmpty()) Text("\u2066" + Tuya.account + "\u2069", color = Ink.text.copy(alpha = .55f), fontFamily = Golos, fontSize = 15.sp)
+                    }
+                }
+                HaRow("ty-check", PhosphorIcons.Fill.WifiHigh, t("Check the connection"))
+                HaRow("ty-out", PhosphorIcons.Fill.SignOut, t("Sign out"), danger = true)
+                Note()
+                Help(t("Add your Tuya lights, plugs and curtains in Tiles on the wall."))
+            }
+            else -> {
+                KeyRow("ty-code", t("User Code"), "", secret = false)
+                Note()
+                Help(t("In Smart Life or Tuya Smart: Me › the gear at the top › Account and Security. The User Code is at the bottom. Type it here, and the TV shows a QR code to scan with the app. No developer account needed."))
+            }
+        }
+    }
+
     @Composable
     private fun HaRow(id: String, icon: ImageVector, label: String, value: String? = null, danger: Boolean = false) {
         Row(
@@ -692,6 +919,14 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
             if (value != null) Text(value, color = Ink.text.copy(alpha = .55f), fontFamily = Golos, fontSize = 16.sp, maxLines = 1)
         }
     }
+}
+
+// Where a tile comes from, said under its name
+fun source(entity: String) = when {
+    Govee.isGovee(entity) -> Govee.label(entity)
+    Sensibo.isSensibo(entity) -> Sensibo.LABEL
+    Tuya.isTuya(entity) -> Tuya.LABEL
+    else -> entity
 }
 
 fun kindIcon(k: Kind): ImageVector = when (k) {
