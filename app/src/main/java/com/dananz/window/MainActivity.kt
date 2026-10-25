@@ -179,7 +179,15 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
     LaunchedEffect(Unit) { room.poll() }
     LaunchedEffect(Unit) { while (true) { runCatching { loadWeather() }.onSuccess { weather = it; Seen.weather = it }.onFailure { Log.w("Window", "weather", it) }; delay(10 * 60_000) } }
 
-    fun choose(p: Place) { place = p; prefs.edit().putString("place", p.name).apply(); placeOpen = false; focus = "place-btn" }
+    // A place from the dropdown: shown, kept, and the dropdown closed
+    fun choose(p: Place) { setPlaceNow(p); placeOpen = false; focus = "place-btn" }
+    // Shuffle: a new place now, then one every Prefs.shuffle minutes (another than the one showing)
+    fun anotherPlace() = Place.entries.filter { it != place }.random()
+    LaunchedEffect(Prefs.shuffle) {
+        val every = Prefs.shuffle
+        if (every <= 0) return@LaunchedEffect
+        while (true) { delay(every * 60_000L); setPlaceNow(anotherPlace()) }
+    }
 
     val dayCount = weather?.days?.size ?: 0
     // Rows, top to bottom: view + forecast, the room's controls, the apps. Left and right stay in
@@ -191,7 +199,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
         controls.ifEmpty { listOf("add-tiles") },
         apps.indices.map { "app-$it" },
     ).filter { it.isNotEmpty() }
-    val menu = Place.entries.map { "place-${it.name}" } + "place-random"
+    val menu = Place.entries.map { "place-${it.name}" } + "place-random" + "place-shuffle"
     // Input or the gear on the remote: quick settings, on the inputs for Input
     LaunchedEffect(panel) {
         val (which, _) = panel ?: return@LaunchedEffect
@@ -287,8 +295,11 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
             focus == "all-lights" -> tap(focus)
             // Opening the list lands on the view that is showing
             focus == "place-btn" -> if (placeOpen) placeOpen = false else { placeOpen = true; focus = "place-${place.name}" }
-            focus == "place-random" -> choose(Place.entries.filter { it != place }.random())
-            focus.startsWith("place-") -> choose(Place.valueOf(focus.removePrefix("place-")))
+            focus == "place-random" -> choose(anotherPlace())
+            // Off, or on with a new place right away
+            focus == "place-shuffle" -> if (Prefs.shuffle > 0) { Prefs.changeShuffle(0); placeOpen = false; focus = "place-btn" }
+                else { Prefs.changeShuffle(Prefs.shuffleEvery); choose(anotherPlace()) }
+            focus.startsWith("place-") -> { Prefs.changeShuffle(0); choose(Place.valueOf(focus.removePrefix("place-"))) }
             focus.startsWith("app-") -> apps.getOrNull(focus.removePrefix("app-").toInt())?.let { app ->
                 if (app.shortcut == Shortcut.AllApps) all.show()
                 // The Settings card is Window's own settings; the TV's are a row away in the quick panel

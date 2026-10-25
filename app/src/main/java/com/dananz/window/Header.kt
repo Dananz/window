@@ -165,6 +165,21 @@ fun PlaceSwitch(place: Place, focused: Boolean, open: Boolean, menuFocus: String
                     Icon(Glyphs.Shuffle, null, Modifier.size(22.dp), tint = Ink.text)
                     Text(t("Surprise me"), color = Ink.text, fontFamily = Golos, fontSize = 20.sp)
                 }
+                // On: a new place by itself every so often (Window settings sets how often)
+                val shuffling = Prefs.shuffle > 0
+                Row(
+                    Modifier.fillMaxWidth().height(60.dp).ring(menuFocus == "place-shuffle", 16.dp)
+                        .clip(RoundedCornerShape(16.dp)).background(if (shuffling) Color.White.copy(alpha = .06f) else Color.Transparent)
+                        .padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(Glyphs.Repeat, null, Modifier.size(22.dp), tint = if (shuffling) Ink.accent else Ink.text)
+                    Column(Modifier.weight(1f)) {
+                        Text(t("Shuffle"), color = if (shuffling) Ink.accent else Ink.text, fontFamily = Golos, fontSize = 20.sp)
+                        Text(t(shuffleWord(Prefs.shuffleEvery)), color = Ink.text.copy(alpha = .55f), fontFamily = Golos, fontSize = 15.sp)
+                    }
+                    if (shuffling) Icon(Glyphs.Check, null, Modifier.size(22.dp), tint = Ink.accent)
+                }
             }
         }
     }

@@ -35,6 +35,12 @@ object Prefs {
         private set
     var tiles by mutableStateOf(emptyList<Tile>())
         private set
+    // The view changes by itself every this many minutes, home screen and screensaver alike; 0: it stays.
+    // shuffleEvery keeps the last interval, for the dropdown's Shuffle to turn back on with
+    var shuffle by mutableIntStateOf(0)
+        private set
+    var shuffleEvery by mutableIntStateOf(30)
+        private set
 
     fun load(context: Context) {
         if (::sp.isInitialized) return
@@ -46,6 +52,8 @@ object Prefs {
         reduced = sp.getBoolean("reduced", false)
         drift = sp.getBoolean("drift", true)
         tiles = sp.getString("tiles", null)?.let(::readTiles) ?: DEFAULT_TILES
+        shuffle = sp.getInt("shuffle", 0)
+        shuffleEvery = sp.getInt("shuffle_every", 30)
         Lang.load(context)
     }
 
@@ -55,6 +63,11 @@ object Prefs {
     fun changeClockMoves(v: Int) { clockMoves = v; sp.edit().putInt("clock_moves", v).apply() }
     fun changeReduced(v: Boolean) { reduced = v; sp.edit().putBoolean("reduced", v).apply() }
     fun changeDrift(v: Boolean) { drift = v; sp.edit().putBoolean("drift", v).apply() }
+    fun changeShuffle(minutes: Int) {
+        shuffle = minutes
+        if (minutes > 0) shuffleEvery = minutes
+        sp.edit().putInt("shuffle", minutes).putInt("shuffle_every", shuffleEvery).apply()
+    }
     fun changeTiles(v: List<Tile>) {
         tiles = v
         sp.edit().putString("tiles", JSONArray(v.map { JSONObject().put("entity", it.entity).put("name", it.name).put("kind", it.kind.name) }).toString()).apply()

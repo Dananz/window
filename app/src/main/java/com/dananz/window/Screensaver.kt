@@ -171,10 +171,13 @@ fun Dream(preview: Boolean) {
     // its own black, so it draws the landscape itself
     val land4k = LocalLand.current?.takeIf { !preview }
     val scope = rememberCoroutineScope()
-    val place = remember {
+    var place by remember {
         val prefs = context.getSharedPreferences("home", Context.MODE_PRIVATE)
-        Seen.place ?: runCatching { Place.valueOf(prefs.getString("place", "")!!) }.getOrDefault(Place.NewYork)
+        mutableStateOf(Seen.place ?: runCatching { Place.valueOf(prefs.getString("place", "")!!) }.getOrDefault(Place.NewYork))
     }
+    // Shuffle: the place the view is leaving and its picture, under the new one as it fades in (swap 0 to 1)
+    var leaving by remember { mutableStateOf<Pair<Place, android.graphics.Bitmap>?>(null) }
+    val swap = remember { Animatable(1f) }
     val room = remember { Room(scope) }
     // Where the home screen was, so the screensaver starts from that very frame: the same picture, the
     // same camera and shade, no black and no fade in. It holds still until the view is on its own, so
@@ -254,19 +257,36 @@ fun Dream(preview: Boolean) {
             value = withContext(Dispatchers.IO) { decodeHd(context, if (viewNight) place.nightHd else place.dayHd) }
         }
         val hd = hdBitmap?.asImageBitmap()
+        // Shuffle in the screensaver: every so often another place fades in, the zoom and the drift going on
+        LaunchedEffect(step, Prefs.shuffle) {
+            val every = Prefs.shuffle
+            if (step != "alone" || every <= 0) return@LaunchedEffect
+            while (true) {
+                delay(every * 60_000L)
+                val old = hdBitmap ?: continue
+                val next = Place.entries.filter { it != place }.random()
+                // Read before the swap, so the new picture is there from its first frame
+                withContext(Dispatchers.IO) { decodeHd(context, if (viewNight) next.nightHd else next.dayHd) } ?: continue
+                leaving = place to old
+                swap.snapTo(0f)
+                place = next
+                swap.animateTo(1f, glide(2_400))
+                leaving = null
+            }
+        }
         val sharpIn = remember { Animatable(0f) }
         LaunchedEffect(step, hd) { if (step == "alone" && hd != null) sharpIn.animateTo(1f, glide(1_200)) }
         if (step == "alone") {
             val from = landRect("dream")
             // Where the view is now, in pixels: read in layout and drawing, so a frame moves it without recomposing
-            fun where(u: Float, ns: Long = frameNs.longValue): android.graphics.RectF {
+            fun where(u: Float, ns: Long = frameNs.longValue, p: Place = place): android.graphics.RectF {
                 val ms = if (aloneAt == 0L) 0f else ((ns - aloneAt) / 1e6f).coerceAtLeast(0f)
                 val k = zoomAt(ms)
                 val drift = driftAt(ms)
                 val tw = 1920f * ZOOM
                 val th = tw * 941f / 1672f
                 val l = from.left + ((1920 - tw) / 2 - from.left) * k + drift * DRIFT * k
-                val tp = from.top + ((1080 - th) * place.top - from.top) * k
+                val tp = from.top + ((1080 - th) * p.top - from.top) * k
                 val ww = from.width + (tw - from.width) * k
                 val hh = from.height + (th - from.height) * k
                 return android.graphics.RectF(l * u, tp * u, (l + ww) * u, (tp + hh) * u)
@@ -305,7 +325,10 @@ fun Dream(preview: Boolean) {
                                 a,
                             )
                         }
-                        LandFrame(null, listOf(LandLayer(bitmap, where(land4k.k, ns), 1f, filter, cloud, 0f)), placed, placedShade)
+                        val going = leaving
+                        val layers = if (going == null) listOf(LandLayer(bitmap, where(land4k.k, ns), 1f, filter, cloud, 0f))
+                            else listOf(LandLayer(going.second, where(land4k.k, ns, going.first), 1f, filter, cloud, 0f), LandLayer(bitmap, where(land4k.k, ns), swap.value, filter, cloud, 0f))
+                        LandFrame(null, layers, placed, placedShade)
                     }
                 }
             }

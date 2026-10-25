@@ -102,9 +102,13 @@ private enum class RowKind { Choice, Toggle, Action, Info, Link }
 private class Row(val id: String, val label: String, val kind: RowKind)
 private class Section(val id: String, val label: String, val icon: ImageVector, val rows: List<Row>)
 
+// How often the view can shuffle, in minutes (0: never), and how each reads
+val SHUFFLES = listOf(0, 10, 30, 60, 120)
+fun shuffleWord(minutes: Int) = when (minutes) { 0 -> "Off"; 60 -> "Every hour"; 120 -> "Every 2 hours"; else -> "Every $minutes min" }
+
 private val SECTIONS = listOf(
     Section("home", "Home screen", PhosphorIcons.Fill.House, listOf(
-        Row("start", "Open on start", RowKind.Choice), Row("view", "View", RowKind.Choice),
+        Row("start", "Open on start", RowKind.Choice), Row("view", "View", RowKind.Choice), Row("shuffle", "Shuffle the view", RowKind.Choice),
         Row("clock", "Clock", RowKind.Choice), Row("arrange", "Arrange apps", RowKind.Action),
     )),
     Section("lang", "Language", PhosphorIcons.Fill.Translate, listOf(Row("lang", "Language", RowKind.Choice))),
@@ -179,6 +183,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
     fun value(id: String): String = when (id) {
         "start" -> appName(Prefs.startApp)
         "view" -> t(host.place.label)
+        "shuffle" -> t(shuffleWord(Prefs.shuffle))
         "clock" -> t(if (Prefs.clock24) "24-hour" else "12-hour")
         "lang" -> when (Lang.choice) { "he" -> "עברית"; "en" -> "English"; else -> t("Follow the TV") }
         "saver" -> t(if (saverOn) "On" else "Off")
@@ -207,6 +212,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         when (id) {
             "start" -> Prefs.changeStartApp(next(startChoices(), Prefs.startApp))
             "view" -> host.setPlace(next(Place.entries, host.place))
+            "shuffle" -> Prefs.changeShuffle(next(SHUFFLES, Prefs.shuffle))
             "clock" -> Prefs.changeClock24(!Prefs.clock24)
             "lang" -> Lang.set(context, next(listOf("system", "en", "he"), Lang.choice))
             "after" -> next(listOf(5, 10, 15, 30), after).let { after = it; Saver.setAfterMinutes(context, it) }
