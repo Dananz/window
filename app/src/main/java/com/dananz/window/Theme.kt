@@ -2,6 +2,12 @@ package com.dananz.window
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -43,9 +49,18 @@ fun DesignCanvas(content: @Composable () -> Unit) {
     val density = LocalDensity.current
     val widthPx = config.screenWidthDp * density.density
     // Any text that doesn't name a face still gets Golos, never the system font
+    // On a 4K panel, the landscape's own surface behind everything (see SharpView)
+    val context = LocalContext.current
+    val land = remember { if (Panel.is4k(context)) Land(SharpView(context)) else null }
     CompositionLocalProvider(
         LocalDensity provides Density(widthPx / 1920f, 1f),
         LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = Golos),
-        content = content,
-    )
+        LocalLand provides land,
+    ) {
+        if (land == null) content()
+        else Box(Modifier.fillMaxSize()) {
+            AndroidView(factory = { land.view }, modifier = Modifier.fillMaxSize())
+            content()
+        }
+    }
 }

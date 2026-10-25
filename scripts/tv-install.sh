@@ -15,11 +15,14 @@ adb -s "$TV" shell pm grant $PKG android.permission.ACCESS_FINE_LOCATION
 adb -s "$TV" shell pm grant $PKG android.permission.WRITE_SECURE_SETTINGS
 # TCL only: its TclAppBoot otherwise stops the service from binding
 adb -s "$TV" shell appops set $PKG AUTO_START allow 2>/dev/null || true
-adb -s "$TV" shell appops set $PKG ACCESS_RESTRICTED_SETTINGS allow
+# Android 13 and up only: lets the service be switched on for a sideloaded app
+adb -s "$TV" shell appops set $PKG ACCESS_RESTRICTED_SETTINGS allow 2>/dev/null || true
 # Lets Window settings change when the screensaver starts
 adb -s "$TV" shell appops set $PKG WRITE_SETTINGS allow
 # Last: installing, compiling and force-stopping the app each take its service off again
-adb -s "$TV" shell am start -S -n $PKG/.MainActivity >/dev/null
+# Started as the home screen, or the next Home opens a second Window in the home task
+adb -s "$TV" shell am start -S -a android.intent.action.MAIN -c android.intent.category.HOME -n $PKG/.MainActivity >/dev/null
 sleep 2
+if no_home_button; then echo "Home button service left off on this TV (nohomebutton)"; exit 0; fi
 adb -s "$TV" shell settings put secure enabled_accessibility_services $PKG/$PKG.HomeButton
 adb -s "$TV" shell settings put secure accessibility_enabled 1

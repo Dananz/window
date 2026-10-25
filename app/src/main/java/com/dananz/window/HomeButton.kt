@@ -13,6 +13,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import androidx.core.content.ContextCompat
 
 // Google TV sends Home to its own launcher whichever app holds the Home role, so the remote's Home
 // is caught here, before the system acts on it, and brings Window up instead, as it was left. With
@@ -46,7 +47,7 @@ class HomeButton : AccessibilityService() {
     // Just after the TV starts, Google TV's home comes up first: Window takes over from it
     override fun onServiceConnected() {
         Keys.wanted(this, true)
-        registerReceiver(wake, IntentFilter(Intent.ACTION_SCREEN_ON), RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(this, wake, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED)
         Prefs.load(this)
         if (SystemClock.elapsedRealtime() < 3 * 60_000) { home(); opening() }
     }
@@ -75,7 +76,9 @@ class HomeButton : AccessibilityService() {
     }
 
     private fun home(panel: String? = null) = startActivity(
-        Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(PANEL, panel),
+        // As the home screen, so it is the same Window the TV opens on Home, not a second one
+        Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setClass(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(PANEL, panel),
     )
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit

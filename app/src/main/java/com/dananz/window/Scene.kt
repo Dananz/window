@@ -12,6 +12,9 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.RectF
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.withFrameNanos
 import android.graphics.Shader
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector3D
@@ -61,14 +64,20 @@ import kotlin.math.min
 import kotlin.math.sqrt
 import kotlin.random.Random
 
-// Each view twice: the home screen's (1672 wide), and twice that for the screensaver, which fills the
-// screen with it zoomed in (upscaled with Real-ESRGAN x4plus, so every building stays where it is;
-// AVIF in res/raw, about 40% smaller than WebP at the same quality)
-enum class Place(val label: String, val day: Int, val night: Int, val dayHd: Int, val nightHd: Int) {
+// Each view twice: the home screen's (1672 wide), and a 3840 x 2160 copy for the panel's own surface, which fills
+// the screen with it zoomed in (made again at 4K by GPT Image 2.5 on Higgsfield from the 1672 one, so the
+// detail is drawn, not enlarged; the small copy is the big one scaled down, so the two line up; WebP in
+// res/raw, as AVIF failed on the Sony's decoder)
+// `top`: what the screensaver keeps of the zoomed-in view, from its top (0) to its bottom (1); .5 crops
+// both evenly. Dubai keeps its top, or the Burj Khalifa's spire is cut off
+enum class Place(val label: String, val day: Int, val night: Int, val dayHd: Int, val nightHd: Int, val top: Float = .5f) {
     NewYork("New York", R.drawable.land_ny_day, R.drawable.land_ny_night, R.raw.land_ny_day_hd, R.raw.land_ny_night_hd),
-    Dubai("Dubai", R.drawable.land_dubai_day, R.drawable.land_dubai_night, R.raw.land_dubai_day_hd, R.raw.land_dubai_night_hd),
+    Dubai("Dubai", R.drawable.land_dubai_day, R.drawable.land_dubai_night, R.raw.land_dubai_day_hd, R.raw.land_dubai_night_hd, top = 0f),
     LosAngeles("Los Angeles", R.drawable.land_la_day, R.drawable.land_la_night, R.raw.land_la_day_hd, R.raw.land_la_night_hd),
     Village("Alpine village", R.drawable.land_village_day, R.drawable.land_village_night, R.raw.land_village_day_hd, R.raw.land_village_night_hd),
+    TelAviv("Tel Aviv", R.drawable.land_telaviv_day, R.drawable.land_telaviv_night, R.raw.land_telaviv_day_hd, R.raw.land_telaviv_night_hd),
+    Amalfi("Amalfi coast", R.drawable.land_amalfi_day, R.drawable.land_amalfi_night, R.raw.land_amalfi_day_hd, R.raw.land_amalfi_night_hd),
+    ViceCity("Vice City", R.drawable.land_vice_day, R.drawable.land_vice_night, R.raw.land_vice_day_hd, R.raw.land_vice_night_hd),
 }
 
 // Where the camera moves for what has focus: zoom, and the point (fractions) it centres
@@ -114,6 +123,20 @@ private val POOLS = mapOf(
 internal data class Move(val x: Float, val y: Float, val s: Float)
 private val MOVE = TwoWayConverter<Move, AnimationVector3D>({ AnimationVector3D(it.x, it.y, it.s) }, { Move(it.v1, it.v2, it.v3) })
 
+// A camera glide as a function of time (System.nanoTime), so the panel's surface can work out where the
+// camera is for the very frame it draws, on its own clock; a new aim starts from wherever it is then
+private class Glide(start: Move) {
+    private data class Leg(val from: Move, val to: Move, val at: Long, val ms: Float)
+    @Volatile private var leg = Leg(start, start, 0L, 1f)
+    fun value(ns: Long): Move {
+        val l = leg
+        val e = GLIDE.transform(((ns - l.at) / 1e6f / l.ms).coerceIn(0f, 1f))
+        return Move(l.from.x + (l.to.x - l.from.x) * e, l.from.y + (l.to.y - l.from.y) * e, l.from.s + (l.to.s - l.from.s) * e)
+    }
+    fun moving(ns: Long) = leg.let { (ns - it.at) / 1e6f < it.ms }
+    fun aim(target: Move, ns: Long, ms: Int) { if (target != leg.to) leg = Leg(value(ns), target, ns, ms.toFloat()) }
+}
+
 // Where a view puts the room on screen, kept from showing past its edges
 internal fun frameOf(v: View) = Move(
     min(0f, max(1920 - 1920 * v.s, 960 - v.s * v.x * 1920)),
@@ -140,7 +163,8 @@ fun landRect(view: String): androidx.compose.ui.geometry.Rect {
 // landscape on its own so it can move at its own depth. In rain the fogged glass is part of the
 // room and there is no landscape to draw behind it.
 // `outside` is the look without the lights: two bakes with the same one show the same landscape
-private class Baked(val room: ImageBitmap, val land: ImageBitmap?, val outside: Look)
+// hd: the 4K copy of the landscape, for the panel's own surface (null in rain, or on a 1080p screen)
+private class Baked(val room: ImageBitmap, val land: ImageBitmap?, val outside: Look, val hd: Bitmap? = null)
 
 // saturate, brightness and contrast, as the CSS filters the prototype used
 private fun grade(sat: Float, bright: Float, contrast: Float): ColorMatrixColorFilter {
@@ -181,13 +205,26 @@ object Seen {
 fun HomeScene(
     levels: Map<String, Int>, sky: Sky, night: Boolean, view: String, place: Place, dim: Boolean, pan: Float = 0f, bare: Boolean = false,
     onLand: ((ImageBitmap?) -> Unit)? = null, cameraMs: Int = Motion.CAMERA, home: Boolean = true, at: View? = null,
+    sharp: Boolean = true,
 ) {
     val context = LocalContext.current
+    // The panel's own surface for the landscape, when there is one and this scene is the one in front
+    val land4k = LocalLand.current?.takeIf { sharp }
+    val me = remember { Any() }
+    if (land4k != null) DisposableEffect(land4k) { land4k.claim(me); onDispose { land4k.release(me) } }
     val v = VIEWS[view] ?: VIEWS.getValue("rest")
     // A new target mid-move carries the speed the camera already has, so quick presses bend the move
     val view = at ?: View(v.s, v.x + pan * PAN, v.y)
-    val cam = animateValueAsState(frameOf(view), MOVE, glide(cameraMs), label = "camera")
-    val depth = animateValueAsState(depthOf(view), MOVE, glide(cameraMs), label = "depth")
+    val camAim = frameOf(view)
+    val depthAim = depthOf(view)
+    val cam = remember { Glide(camAim) }
+    val depth = remember { Glide(depthAim) }
+    // The latest frame's time, while the camera moves: what the screen draws by
+    val frameNs = remember { mutableLongStateOf(System.nanoTime()) }
+    LaunchedEffect(camAim, depthAim) {
+        withFrameNanos { ns -> cam.aim(camAim, ns, cameraMs); depth.aim(depthAim, ns, cameraMs); frameNs.longValue = ns }
+        while (cam.moving(frameNs.longValue) || depth.moving(frameNs.longValue)) withFrameNanos { frameNs.longValue = it }
+    }
     // The home screen leaves what it shows for the screensaver, which starts from that very frame
     if (home) SideEffect { Seen.levels = levels; Seen.sky = sky; Seen.night = night; Seen.view = view; Seen.dim = dim; Seen.place = place }
     // Darkened behind the raised apps; a tint on the one image, not another layer over the screen
@@ -208,7 +245,7 @@ fun HomeScene(
         // so its making can't stall their fade (and a quick run along the days makes none between)
         val l = last
         if (l != null && l.place == look.place && l.levels == look.levels) delay((Motion.TEXT_OUT + Motion.TEXT_IN).toLong())
-        val baked = withContext(Dispatchers.Default) { bake(context, look) }
+        val baked = withContext(Dispatchers.Default) { bake(context, look, hd = land4k != null) }
         // Only the lights changed: their pools fade, quicker than a whole new scene
         val ms = when (last?.copy(levels = look.levels)) {
             null -> 300
@@ -234,12 +271,23 @@ fun HomeScene(
     Box(
         Modifier.fillMaxSize().drawBehind {
             val u = size.width / 1920
-            val c = cam.value
-            val d = depth.value
+            val c = cam.value(frameNs.longValue)
+            val d = depth.value(frameNs.longValue)
             val tint = shade.value.takeIf { it > 0f }?.let { ColorFilter.tint(Color.Black.copy(alpha = it), BlendMode.SrcAtop) }
+            // On the panel's surface: the landscape goes there, in the panel's pixels, and the window is left clear
+            val sharpNow = land4k?.takeIf { it.owns(me) }
+            // What goes on the surface, placed there by the surface's own thread for each frame it draws
+            class Sharp(val bitmap: Bitmap, val alpha: Float, val sky: Sky)
+            val sharps = ArrayList<Sharp>(2)
+            fun sharpLayer(b: Baked, alpha: Float): Boolean {
+                val h = b.hd ?: return false
+                if (sharpNow == null) return false
+                sharps += Sharp(h, alpha, b.outside.sky)
+                return true
+            }
             fun scene(b: Baked, alpha: Float, outside: Boolean = true) {
                 withTransform({ translate(c.x * u, c.y * u); scale(c.s * u, c.s * u, Offset.Zero) }) {
-                    b.land?.takeIf { outside }?.let { land ->
+                    b.land?.takeIf { outside && !sharpLayer(b, alpha) }?.let { land ->
                         fun view() = withTransform({ translate(WIN_CX + d.x, WIN_CY + d.y); scale(d.s, d.s, Offset.Zero) }) {
                             drawImage(land, dstOffset = IntOffset((-LAND_W / 2).toInt(), (-LAND_H / 2).toInt()), dstSize = IntSize(LAND_W.toInt(), LAND_H.toInt()), alpha = alpha, colorFilter = tint)
                         }
@@ -258,6 +306,22 @@ fun HomeScene(
             // Only the lights changed: the landscape is the same, so it is drawn once, whole, and only
             // the room fades. Fading a second copy in over the first dimmed it for a moment
             shown?.let { scene(it, fade.value, outside = before == null || before.outside != it.outside) }
+            sharpNow?.let { l ->
+                val k = l.k
+                val open = gone.value > 0f
+                val dim = shade.value
+                l.animate(me) { ns ->
+                    val c2 = cam.value(ns); val d2 = depth.value(ns)
+                    // A little past the opening: the room covers it, and the room (drawn by the screen, on its
+                    // own clock) can be a frame apart from the surface
+                    val m = 24f
+                    val clip = if (open) null else RectF(k * (c2.x + c2.s * (Win.L * 1920 - m)), k * (c2.y + c2.s * (Win.T * 1080 - m)), k * (c2.x + c2.s * (Win.R * 1920 + m)), k * (c2.y + c2.s * (Win.B * 1080 + m)))
+                    val w = LAND_W * d2.s; val hh = LAND_H * d2.s
+                    val x = WIN_CX + d2.x - w / 2; val y = WIN_CY + d2.y - hh / 2
+                    val dst = RectF(k * (c2.x + c2.s * x), k * (c2.y + c2.s * y), k * (c2.x + c2.s * (x + w)), k * (c2.y + c2.s * (y + hh)))
+                    LandFrame(clip, sharps.map { LandLayer(it.bitmap, dst, it.alpha, LAND_GRADE[it.sky], cloudOf(it.sky), dim) })
+                }
+            }
             val bands = 1f - gone.value
             drawImage(top, dstSize = IntSize(size.width.toInt(), (240 * u).roundToInt()), alpha = bands, colorFilter = tint)
             val fh = (454 * u).roundToInt()
@@ -268,7 +332,7 @@ fun HomeScene(
             Box(
                 Modifier.size(1920.dp, 1080.dp).graphicsLayer {
                     transformOrigin = TransformOrigin(0f, 0f)
-                    val c = cam.value
+                    val c = cam.value(frameNs.longValue)
                     translationX = c.x.dp.toPx()
                     translationY = c.y.dp.toPx()
                     scaleX = c.s; scaleY = c.s
@@ -306,7 +370,7 @@ private fun decode(context: Context, res: Int): Bitmap = synchronized(cache) {
     cache.getOrPut(res) { BitmapFactory.decodeResource(context.resources, res, BitmapFactory.Options().apply { inScaled = false }) }
 }
 
-private fun bake(context: Context, look: Look): Baked {
+private fun bake(context: Context, look: Look, hd: Boolean = false): Baked {
     val out = Bitmap.createBitmap(BW, BH, Bitmap.Config.ARGB_8888)
     val c = Canvas(out)
     val filtered = Paint(Paint.FILTER_BITMAP_FLAG)
@@ -366,7 +430,8 @@ private fun bake(context: Context, look: Look): Baked {
     // In rain every pixel is painted, so the GPU can draw it without blending
     if (rain) out.setHasAlpha(false) else land.setHasAlpha(false)
     // Kept in GPU memory, so they are uploaded once and not again on frames that draw them
-    return Baked(gpu(out), if (rain) null.also { land.recycle() } else gpu(land), look.copy(levels = emptyMap()))
+    val sharp = if (hd && !rain) decodeHd(context, if (look.night) look.place.nightHd else look.place.dayHd) else null
+    return Baked(gpu(out), if (rain) null.also { land.recycle() } else gpu(land), look.copy(levels = emptyMap()), sharp)
 }
 
 private fun gpu(b: Bitmap): ImageBitmap {

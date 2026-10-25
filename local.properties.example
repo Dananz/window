@@ -2,6 +2,9 @@
 sdk.dir=/Users/you/Library/Android/sdk
 # The TV the scripts talk to
 tv=192.168.1.50:5555
+# Optional, one line per TV (adb shell getprop ro.serialno): install without the Home button service.
+# For TVs where Home reaches Window once Google TV's home is off and the service stops held keys repeating.
+# nohomebutton=<serial>
 # Optional: build an APK already signed in to Home Assistant. Never share such an APK.
 # ha.url=http://homeassistant.local:8123
 # ha.token=

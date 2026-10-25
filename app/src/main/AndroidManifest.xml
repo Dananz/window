@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Govee lights answer a multicast scan on the home network -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- All apps can uninstall an app, through the system's own confirm -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
@@ -68,6 +69,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </service>
+
+        <!-- Tiles on the wall set over adb (TilesReceiver); DUMP keeps other apps out -->
+        <receiver
+            android:name=".TilesReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
 
         <!-- The remote's Home button, back to Window -->
         <service

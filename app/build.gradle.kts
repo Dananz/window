@@ -15,10 +15,10 @@ android {
     defaultConfig {
         applicationId = "com.dananz.window"
         // Android 13: the rain is an AGSL RuntimeShader
-        minSdk = 33
+        minSdk = 31
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.0.1"
         buildConfigField("String", "HA_URL", "\"${local.getProperty("ha.url", "")}\"")
         buildConfigField("String", "HA_TOKEN", "\"${local.getProperty("ha.token", "")}\"")
     }

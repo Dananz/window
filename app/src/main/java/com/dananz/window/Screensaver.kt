@@ -31,13 +31,25 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.asComposeColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asComposeColorFilter
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.produceState
 import android.graphics.BitmapFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.draw.drawBehind
@@ -120,15 +132,44 @@ class Screensaver : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
 private val CORNERS = listOf(Alignment.BottomStart, Alignment.TopEnd, Alignment.BottomEnd, Alignment.TopStart)
 
 // The view alone: this much larger than the screen, so it can drift this far either way
-private const val ZOOM = 1.32f
+private const val ZOOM = 1.12f
 // The camera's way to the window: slower than the home screen's moves, eased at both ends
 private const val DREAM_CAMERA = 3_200
 private val DRIFT = (ZOOM - 1) * 1920 / 2
+// The time and the weather drift with the view, this much of its way: two layers moving at their own
+// pace, so the words seem to float over the landscape (any further and they'd reach the screen's edge)
+private const val PARALLAX = .6f
+// Room around the words in their picture, for the shadows (design pixels)
+private const val WORDS_PAD = 48
+// A soft shadow under the time and the weather, so they read on a bright sky or a lit city
+private val BIG_SHADOW = androidx.compose.ui.graphics.Shadow(Color(0x8C000000), androidx.compose.ui.geometry.Offset(0f, 4f), 24f)
+private val SHADOW = androidx.compose.ui.graphics.Shadow(Color(0x99000000), androidx.compose.ui.geometry.Offset(0f, 2f), 10f)
+// One sweep of the drift, from the middle to a side (a whole cycle is four)
+private const val SWEEP = 60_000
+
+// The zoom (0 to 1) and the drift (-1 to 1) by the time since the view was alone, so the panel's surface
+// can work them out for the very frame it draws, on its own clock
+private const val ZOOM_IN = 9_000f
+private fun zoomAt(ms: Float) = GLIDE.transform((ms / ZOOM_IN).coerceIn(0f, 1f))
+private fun driftAt(ms: Float): Float {
+    val e = androidx.compose.animation.core.FastOutSlowInEasing
+    // Side to side and back, for as long as it runs
+    val t = ms % (SWEEP * 4f)
+    return when {
+        t < SWEEP -> e.transform(t / SWEEP)
+        t < SWEEP * 3 -> 1 - 2 * e.transform((t - SWEEP) / (SWEEP * 2))
+        else -> -1 + e.transform((t - SWEEP * 3) / SWEEP)
+    }
+}
 
 // The screensaver, here and as Window settings' preview (which any key ends)
 @Composable
 fun Dream(preview: Boolean) {
     val context = LocalContext.current
+    // The real screensaver draws the landscape on the panel's own surface, from the room to the end, so
+    // nothing changes sharpness on the way. The settings' preview sits over the home screen and keeps
+    // its own black, so it draws the landscape itself
+    val land4k = LocalLand.current?.takeIf { !preview }
     val scope = rememberCoroutineScope()
     val place = remember {
         val prefs = context.getSharedPreferences("home", Context.MODE_PRIVATE)
@@ -150,9 +191,10 @@ fun Dream(preview: Boolean) {
     var land by remember { mutableStateOf<ImageBitmap?>(null) }
     var corner by remember { mutableIntStateOf(0) }
     val words = remember { Animatable(0f) }
-    // From where the room left the view (0) to zoomed in (1), over a long glide
-    val zoom = remember { Animatable(0f) }
-    val drift = remember { Animatable(0f) }
+    // When the view was alone (System.nanoTime), and the screen's latest frame time: the zoom and the drift
+    // are worked out from the two
+    var aloneAt by remember { mutableLongStateOf(0L) }
+    val frameNs = remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(Unit) { room.sync(Prefs.tiles); runCatching { loadWeather() }.onSuccess { weather = it } }
     LaunchedEffect(Unit) { while (true) { now = LocalTime.now(); today = LocalDate.now(); delay(10_000) } }
@@ -166,7 +208,7 @@ fun Dream(preview: Boolean) {
         step = "bare"
         delay(1_600)
         step = "alone"
-        launch { zoom.animateTo(1f, glide(9_000)) }
+        aloneAt = System.nanoTime()
         delay(700)
         if (Prefs.saverShows != 2) words.animateTo(1f, glide(Motion.TEXT_IN * 2))
         while (true) {
@@ -179,13 +221,9 @@ fun Dream(preview: Boolean) {
         }
     }
     LaunchedEffect(step) {
-        if (step != "alone") return@LaunchedEffect
-        // Side to side and back, about a minute each quarter, for as long as it runs
-        while (true) {
-            drift.animateTo(1f, tween(60_000, easing = androidx.compose.animation.core.FastOutSlowInEasing))
-            drift.animateTo(-1f, tween(120_000, easing = androidx.compose.animation.core.FastOutSlowInEasing))
-            drift.animateTo(0f, tween(60_000, easing = androidx.compose.animation.core.FastOutSlowInEasing))
-        }
+        // On the panel's surface the surface keeps its own time, and the screen draws nothing while the view drifts
+        if (step != "alone" || land4k != null) return@LaunchedEffect
+        while (true) withFrameNanos { frameNs.longValue = it }
     }
 
     val w = weather
@@ -195,13 +233,15 @@ fun Dream(preview: Boolean) {
     val held = seen != null && step != "alone"
     val rtl = Lang.he
     CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides if (rtl) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr) {
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    // The words' picture at the panel's resolution, and where its corner is (set below, read by the surface)
+    var wordsPicture by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    Box(Modifier.fillMaxSize().then(if (land4k == null) Modifier.background(Color.Black) else Modifier)) {
         if (step != "alone") {
             CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
                 HomeScene(
                     if (held) seen!!.first else room.lights.associate { it.id to it.level }, if (held) seen!!.second else sky, if (held) seen!!.third else night,
                     if (step == "room") "rest" else "dream", place, dim = step == "room" && seenDim, bare = step == "bare", onLand = { land = it },
-                    cameraMs = DREAM_CAMERA, home = false, at = seenView.takeIf { step == "room" },
+                    cameraMs = DREAM_CAMERA, home = false, at = seenView.takeIf { step == "room" }, sharp = land4k != null,
                 )
             }
         }
@@ -210,37 +250,71 @@ fun Dream(preview: Boolean) {
         // The sharp copy for the zoomed-in view, read while the camera is still on its way in
         val context = LocalContext.current
         val viewNight = if (held) seen!!.third else night
-        val hd by produceState<ImageBitmap?>(null, place, viewNight) {
-            value = withContext(Dispatchers.IO) {
-                runCatching {
-                    val t = System.currentTimeMillis()
-                    context.resources.openRawResource(if (viewNight) place.nightHd else place.dayHd).use { BitmapFactory.decodeStream(it) }.asImageBitmap()
-                        .also { android.util.Log.d("Window", "sharp view decoded in ${System.currentTimeMillis() - t} ms") }
-                }.onFailure { android.util.Log.w("Window", "sharp view", it) }.getOrNull()
-            }
+        val hdBitmap by produceState<android.graphics.Bitmap?>(null, place, viewNight) {
+            value = withContext(Dispatchers.IO) { decodeHd(context, if (viewNight) place.nightHd else place.dayHd) }
         }
+        val hd = hdBitmap?.asImageBitmap()
         val sharpIn = remember { Animatable(0f) }
         LaunchedEffect(step, hd) { if (step == "alone" && hd != null) sharpIn.animateTo(1f, glide(1_200)) }
         if (step == "alone") {
             val from = landRect("dream")
-            Box(Modifier.fillMaxSize().drawBehind {
-                val u = size.width / 1920
-                val k = zoom.value
+            // Where the view is now, in pixels: read in layout and drawing, so a frame moves it without recomposing
+            fun where(u: Float, ns: Long = frameNs.longValue): android.graphics.RectF {
+                val ms = if (aloneAt == 0L) 0f else ((ns - aloneAt) / 1e6f).coerceAtLeast(0f)
+                val k = zoomAt(ms)
+                val drift = driftAt(ms)
                 val tw = 1920f * ZOOM
                 val th = tw * 941f / 1672f
-                val l = from.left + ((1920 - tw) / 2 - from.left) * k + drift.value * DRIFT * k
-                val tp = from.top + ((1080 - th) / 2 - from.top) * k
+                val l = from.left + ((1920 - tw) / 2 - from.left) * k + drift * DRIFT * k
+                val tp = from.top + ((1080 - th) * place.top - from.top) * k
                 val ww = from.width + (tw - from.width) * k
                 val hh = from.height + (th - from.height) * k
-                val at = IntOffset((l * u).toInt(), (tp * u).toInt())
-                val size = IntSize((ww * u).toInt(), (hh * u).toInt())
-                val sharp = hd
+                return android.graphics.RectF(l * u, tp * u, (l + ww) * u, (tp + hh) * u)
+            }
+            fun frame(u: Float): Pair<IntOffset, IntSize> = where(u).let { IntOffset(it.left.toInt(), it.top.toInt()) to IntSize(it.width().toInt(), it.height().toInt()) }
+            // Graded and clouded as the home screen's copy is; in rain that copy is plain, so this is too
+            val graded = land != null
+            val sharp = hd
+            val me = remember { Any() }
+            if (land4k != null) {
+                DisposableEffect(land4k) { land4k.claim(me); onDispose { land4k.release(me) } }
+                // On the panel's surface, where the room's scene left it: the same picture, sharp throughout,
+                // placed by the surface's own thread for each frame it draws
+                val bitmap = hdBitmap
+                val filter = if (graded) landGrade(sky) else null
+                val cloud = if (graded) cloudOf(sky) else 0f
+                val picture = wordsPicture?.takeIf { Prefs.saverShows != 2 }
+                SideEffect {
+                    if (bitmap != null) land4k.animate(me) { ns ->
+                        // The words where the screen would put them, in the panel's pixels, floating with the drift,
+                        // and the shade under them
+                        var placedShade: LandShade? = null
+                        val placed = picture?.let { pic ->
+                            val k = land4k.k
+                            val c = CORNERS[corner]
+                            val left = (c == Alignment.BottomStart || c == Alignment.TopStart) != rtl
+                            val top = c == Alignment.TopStart || c == Alignment.TopEnd
+                            val pad = WORDS_PAD * k
+                            val ms = if (aloneAt == 0L) 0f else ((ns - aloneAt) / 1e6f).coerceAtLeast(0f)
+                            val a = words.value
+                            placedShade = LandShade(((if (left) 0f else 1920f) + driftAt(ms) * DRIFT * zoomAt(ms) * PARALLAX) * k, (if (top) 0f else 1080f) * k, 1100f * k, a * .9f)
+                            LandWords(
+                                pic,
+                                (if (left) 96 * k - pad else land4k.view.panelWidth - 96 * k - pic.width + pad) + driftAt(ms) * DRIFT * zoomAt(ms) * PARALLAX * k,
+                                (if (top) 80 * k - pad else land4k.view.panelHeight - 80 * k - pic.height + pad) + (1 - a) * 10 * k,
+                                a,
+                            )
+                        }
+                        LandFrame(null, listOf(LandLayer(bitmap, where(land4k.k, ns), 1f, filter, cloud, 0f)), placed, placedShade)
+                    }
+                }
+            }
+            if (land4k == null) Box(Modifier.fillMaxSize().drawBehind {
+                val (at, size) = frame(size.width / 1920)
                 // The picture the room left drawn first, the sharp copy fading in over it: no frame jumps
                 drawImage(shown, dstOffset = at, dstSize = size, filterQuality = FilterQuality.High)
                 val a = sharpIn.value
                 if (sharp != null && a > 0f) {
-                    // Graded and clouded as the home screen's copy is; in rain that copy is plain, so this is too
-                    val graded = land != null
                     drawImage(sharp, dstOffset = at, dstSize = size, alpha = a, colorFilter = if (graded) landGrade(sky)?.asComposeColorFilter() else null, filterQuality = FilterQuality.High)
                     val cloud = if (graded) cloudOf(sky) else 0f
                     if (cloud > 0f) drawRect(
@@ -255,30 +329,66 @@ fun Dream(preview: Boolean) {
             val start = c == Alignment.BottomStart || c == Alignment.TopStart
             val top = c == Alignment.TopStart || c == Alignment.TopEnd
             // A soft shade under the words so they read on a bright sky
-            Box(
-                Modifier.fillMaxSize().graphicsLayer { alpha = words.value * .9f }
-                    .background(Brush.radialGradient(listOf(Color(0x99000000), Color.Transparent), radius = 1100f, center = androidx.compose.ui.geometry.Offset(if (start != rtl) 0f else 1920f, if (top) 0f else 1080f))),
+            // Read in drawing and in the layer, so the drift moves them without recomposing
+            fun float(): Float {
+                val ms = if (aloneAt == 0L) 0f else ((frameNs.longValue - aloneAt) / 1e6f).coerceAtLeast(0f)
+                return driftAt(ms) * DRIFT * zoomAt(ms) * PARALLAX
+            }
+            if (land4k == null) Box(
+                Modifier.fillMaxSize().graphicsLayer { alpha = words.value * .9f }.drawBehind {
+                    val u = size.width / 1920
+                    drawRect(Brush.radialGradient(listOf(Color(0x99000000), Color.Transparent), radius = 1100f * u,
+                        center = androidx.compose.ui.geometry.Offset(((if (start != rtl) 0f else 1920f) + float()) * u, (if (top) 0f else 1080f) * u)))
+                },
             )
-            Column(
+            if (land4k == null) Column(
                 Modifier.align(c).padding(horizontal = 96.dp, vertical = 80.dp)
-                    .graphicsLayer { alpha = words.value; translationY = (1 - words.value) * 10.dp.toPx() },
+                    .graphicsLayer { alpha = words.value; translationY = (1 - words.value) * 10.dp.toPx(); translationX = float().dp.toPx() },
                 horizontalAlignment = if (start) Alignment.Start else Alignment.End,
-            ) {
-                Text(now.format(TIME), color = Ink.text, fontFamily = Syne, style = Numbers, fontWeight = FontWeight.Bold, fontSize = 168.sp, lineHeight = 168.sp, letterSpacing = (-5).sp)
-                Text(today.format(DATE), color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 30.sp)
-                if (w != null && Prefs.saverShows == 0) {
-                    val d = w.days.firstOrNull()
-                    Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(Glyphs.sky(w.sky, true), null, Modifier.size(32.dp), tint = Ink.text)
-                        Text("${w.temp}°", color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 30.sp)
-                        Text(
-                            skyWord(w.sky) + (d?.let { " · " + f("H {0}° L {1}°", it.high, it.low) } ?: ""),
-                            color = Ink.text.copy(alpha = .75f), fontFamily = Golos, fontSize = 30.sp,
-                        )
+            ) { Words(now, today, w) }
+            else {
+                // On the panel's surface: the words drawn at its resolution, into a picture made again when they
+                // change (each minute, a new forecast, another corner), which the surface's thread places
+                val layer = rememberGraphicsLayer()
+                val measured = remember { IntArray(2) }
+                val scale = land4k.k
+                Box(
+                    Modifier.layout { m, cs ->
+                        val p = m.measure(Constraints())
+                        measured[0] = p.width; measured[1] = p.height
+                        layout(0, 0) { p.place(0, 0) }
+                    }.drawWithContent { layer.record(size = IntSize(measured[0], measured[1])) { this@drawWithContent.drawContent() } },
+                ) {
+                    CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density * scale, 1f)) {
+                        Column(Modifier.padding(WORDS_PAD.dp), horizontalAlignment = if (start) Alignment.Start else Alignment.End) { Words(now, today, w) }
                     }
+                }
+                val text = now.format(TIME) + today + w + start + Prefs.saverShows + Lang.he
+                LaunchedEffect(text) {
+                    // Drawn into the layer on the next frame, then read back
+                    repeat(2) { withFrameNanos { } }
+                    if (measured[0] > 0) wordsPicture = layer.toImageBitmap().asAndroidBitmap()
                 }
             }
         }
     }
+    }
+}
+
+// The time, the date and the weather, as the screensaver shows them
+@Composable
+private fun Words(now: LocalTime, today: LocalDate, w: Weather?) {
+    Text(now.format(TIME), color = Ink.text, fontFamily = Syne, style = Numbers.copy(shadow = BIG_SHADOW), fontWeight = FontWeight.Bold, fontSize = 168.sp, lineHeight = 168.sp, letterSpacing = (-5).sp)
+    Text(today.format(DATE), color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 30.sp, style = TextStyle(shadow = SHADOW))
+    if (w != null && Prefs.saverShows == 0) {
+        val d = w.days.firstOrNull()
+        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Glyphs.sky(w.sky, true), null, Modifier.size(32.dp), tint = Ink.text)
+            Text("${w.temp}°", color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 30.sp, style = TextStyle(shadow = SHADOW))
+            Text(
+                skyWord(w.sky) + (d?.let { " · " + f("H {0}° L {1}°", it.high, it.low) } ?: ""),
+                color = Ink.text.copy(alpha = .75f), fontFamily = Golos, fontSize = 30.sp, style = TextStyle(shadow = SHADOW),
+            )
+        }
     }
 }

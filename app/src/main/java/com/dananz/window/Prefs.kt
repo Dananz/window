@@ -82,7 +82,22 @@ object Saver {
     private const val GOOGLE = "com.google.android.apps.tv.dreamx/.service.Backdrop"
     private fun me(context: Context) = ComponentName(context, Screensaver::class.java).flattenToString()
 
-    fun isWindow(context: Context) = Settings.Secure.getString(context.contentResolver, "screensaver_components").orEmpty().contains(me(context).substringAfter('/'))
+    // The setting can hold the short form (com.dananz.window/.Screensaver, from the scripts) or the long one
+    fun isWindow(context: Context): Boolean {
+        val mine = ComponentName(context, Screensaver::class.java)
+        return Settings.Secure.getString(context.contentResolver, "screensaver_components").orEmpty()
+            .split(',').any { ComponentName.unflattenFromString(it.trim()) == mine }
+    }
+
+    // On by default: the first time Window can write the TV's settings, its screensaver becomes the
+    // TV's. Once only, so switching it off in Window settings stays off
+    fun byDefault(context: Context) {
+        val sp = context.getSharedPreferences("home", Context.MODE_PRIVATE)
+        if (sp.getBoolean("saver_default", false)) return
+        if (context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return
+        setWindow(context, true)
+        sp.edit().putBoolean("saver_default", true).apply()
+    }
 
     fun setWindow(context: Context, on: Boolean) = runCatching {
         if (context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return@runCatching

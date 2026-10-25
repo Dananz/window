@@ -66,6 +66,10 @@ class MainActivity : ComponentActivity() {
     private var resumes by mutableIntStateOf(0)
     // A remote button that opens one of Window's panels (Input, the gear), counted so the same one twice opens twice
     private var panel by mutableStateOf<Pair<String, Int>?>(null)
+    // Home pressed, counted: back to the main view (everything closed). Not after an app Window opened
+    // (`away`): coming back from it, Window stays as it was left
+    private var homes by mutableIntStateOf(0)
+    private var away = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,7 +81,7 @@ class MainActivity : ComponentActivity() {
         Sensibo.load(this)
         Tuya.load(this)
         panelFrom(intent)
-        setContent { DesignCanvas { Home(apps, resumes, panel) { apps = it } } }
+        setContent { DesignCanvas { Home(apps, resumes, panel, homes) { apps = it } } }
         // Window's Home button is an accessibility service, and with any service on, Compose describes
         // the screen to the system after every change. Nothing here is read aloud, so it is left out
         window.decorView.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
@@ -87,7 +91,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.getStringExtra(HomeButton.PANEL) == null) { if (away) away = false else homes++ }
         panelFrom(intent)
+    }
+
+    // Every app, TV settings page or system dialog Window opens goes through here
+    override fun startActivity(intent: Intent, options: Bundle?) {
+        super.startActivity(intent, options)
+        away = true
     }
 
     private fun panelFrom(intent: Intent) {
@@ -96,7 +107,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Home's check in onNewIntent comes first; back by any other way (Back from the app), it's spent
+        away = false
         Keys.repair(this)
+        Saver.byDefault(this)
         // Apps come and go while we are away (installs, updates): read them again each time
         apps = loadApps(this)
         resumes++
@@ -106,7 +120,7 @@ class MainActivity : ComponentActivity() {
 private enum class Dir { Left, Right, Up, Down }
 
 @Composable
-fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (List<TvApp>) -> Unit) {
+fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int, onApps: (List<TvApp>) -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("home", Context.MODE_PRIVATE) }
     val root = remember { FocusRequester() }
@@ -293,6 +307,18 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, onApps: (Li
         if (all.shelfChanged) onApps(shelf)
         all.shelfChanged = false
         focus = "app-${shelf.indexOfFirst { it.shortcut == Shortcut.AllApps }.coerceAtLeast(0)}"
+    }
+
+    // Home: the main view, from anywhere in Window (the screensaver, settings, quick settings, All apps,
+    // the apps' full-screen view); focus goes back up to the last control above the apps
+    LaunchedEffect(homes) {
+        if (homes == 0) return@LaunchedEffect
+        settings.preview = false
+        if (settings.open) settings.close()
+        quickOpen = false; placeOpen = false; grabbed = null
+        hold?.cancel(); hold = null; held = false
+        if (all.open) { while (!all.back()) Unit; closeAll() }
+        if (!rows.any { focus in it } || focus.startsWith("app-")) focus = above
     }
 
     val appIndex = focus.takeIf { it.startsWith("app-") }?.removePrefix("app-")?.toIntOrNull()

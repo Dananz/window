@@ -19,7 +19,7 @@ look at the TV whenever a prompt might appear on it.
 2. Connect. Run `adb connect <TV-IP>:5555`. If it's refused, tell me how to turn on Developer options and
    Network debugging on the TV (Settings > System > About, press the build 7 times; then Developer
    options). If it says unauthorized, ask me to accept the prompt on the TV with "Always allow". Then
-   check `adb -s <TV-IP>:5555 shell getprop ro.build.version.sdk` is 33 or higher, and tell me the
+   check `adb -s <TV-IP>:5555 shell getprop ro.build.version.sdk` is 31 or higher (Android 12), and tell me the
    model (`ro.product.model`).
 
 3. Build and install: `scripts/tv-install.sh`. If the install fails with a signature error, Window was
@@ -54,5 +54,11 @@ Notes for Claude, if things go sideways:
   WRITE_SECURE_SETTINGS).
 - `appops set ... AUTO_START` exists only on TCL TVs; elsewhere it's skipped.
 - A TV with a second user: use `--user 0` with `pm`.
+- Held volume or arrows on the remote step only once: the Home button service is in the way (its key
+  filter stops keys repeating on some remotes, a Sony BRAVIA's). If Home already brings Window up with
+  Google TV's home switched off, add `nohomebutton=<serial>` (`adb shell getprop ro.serialno`) to
+  local.properties and install again: the scripts then leave the service off on that TV.
+- On a 4K panel Window shows the landscape on a surface of the panel's own size. If the TV's log says
+  `[4K/2K UI Coexist]` and the picture is black, the surface moved or was scaled: it must stay full screen.
 - Keys over adb: 19 up, 20 down, 21 left, 22 right, 23 OK, 4 back, 3 home. Keys injected with
   `input keyevent 3` skip accessibility services, so Home from adb isn't the same as the remote's.

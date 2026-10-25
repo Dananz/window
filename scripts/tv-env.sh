@@ -5,3 +5,11 @@ if [ -z "$TV" ]; then
   echo "Which TV? Run with TV=<ip>:5555, or add tv=<ip>:5555 to local.properties." >&2
   exit 1
 fi
+
+# A TV listed as `nohomebutton=<serial>` in local.properties gets no Home button service: there Home
+# reaches Window once Google TV's home is off, and the service's key filter stops held keys repeating
+# (volume, arrows) on its remote (Sony BRAVIA)
+no_home_button() {
+  serial=$(adb -s "$TV" shell getprop ro.serialno | tr -d '\r')
+  grep -qx "nohomebutton=$serial" "$(dirname "$0")/../local.properties" 2>/dev/null
+}
