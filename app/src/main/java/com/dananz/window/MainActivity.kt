@@ -199,7 +199,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
         controls.ifEmpty { listOf("add-tiles") },
         apps.indices.map { "app-$it" },
     ).filter { it.isNotEmpty() }
-    val menu = Place.entries.map { "place-${it.name}" } + "place-random" + "place-shuffle"
+    val menu = Place.entries.map { "place-${it.name}" } + "place-shuffle"
     // Input or the gear on the remote: quick settings, on the inputs for Input
     LaunchedEffect(panel) {
         val (which, _) = panel ?: return@LaunchedEffect
@@ -295,7 +295,6 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
             focus == "all-lights" -> tap(focus)
             // Opening the list lands on the view that is showing
             focus == "place-btn" -> if (placeOpen) placeOpen = false else { placeOpen = true; focus = "place-${place.name}" }
-            focus == "place-random" -> choose(anotherPlace())
             // Off, or on with a new place right away
             focus == "place-shuffle" -> if (Prefs.shuffle > 0) { Prefs.changeShuffle(0); placeOpen = false; focus = "place-btn" }
                 else { Prefs.changeShuffle(Prefs.shuffleEvery); choose(anotherPlace()) }

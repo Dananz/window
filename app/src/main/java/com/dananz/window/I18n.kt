@@ -69,7 +69,6 @@ private val HE = mapOf(
     "Tel Aviv" to "תל אביב",
     "Amalfi coast" to "חוף אמלפי",
     "Vice City" to "וייס סיטי",
-    "Surprise me" to "תפתיע אותי",
     "All lights" to "כל האורות",
     "Ceiling" to "תקרה",
     "Kitchen" to "מטבח",

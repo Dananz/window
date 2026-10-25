@@ -13,7 +13,6 @@ import com.adamglin.phosphoricons.fill.MapPin
 import com.adamglin.phosphoricons.fill.Sun as SunFill
 import com.adamglin.phosphoricons.regular.Cloud
 import com.adamglin.phosphoricons.regular.CloudRain
-import com.adamglin.phosphoricons.regular.Shuffle
 import com.adamglin.phosphoricons.regular.Repeat
 import com.adamglin.phosphoricons.bold.Check
 import com.adamglin.phosphoricons.regular.Sun
@@ -36,7 +35,6 @@ object Glyphs {
     val Gear = PhosphorIcons.Bold.Gear
     val Grid = PhosphorIcons.Bold.SquaresFour
     val Pin = PhosphorIcons.Fill.MapPin
-    val Shuffle = PhosphorIcons.Regular.Shuffle
     val Repeat = PhosphorIcons.Regular.Repeat
     val Check = PhosphorIcons.Bold.Check
 
