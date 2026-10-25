@@ -11,10 +11,15 @@ Set up Window, the Google TV home screen in this repository, on my TV at <TV-IP>
 The TV is next to me. Before anything that changes the TV, tell me what you're about to do. Ask me to
 look at the TV whenever a prompt might appear on it.
 
-1. Tools. Check for adb, JDK 21 and the Android SDK (platform 37, build tools 37). Install what's missing
-   with Homebrew (`brew install openjdk@21 android-platform-tools`, and the SDK with sdkmanager or Android
-   Studio). Create local.properties from local.properties.example: sdk.dir, and tv=<TV-IP>:5555. Leave
-   ha.url and ha.token out.
+1. Latest version and tools. Run `git pull` so the scripts are current. Install the newest release, not a
+   build of your own, unless I ask you to build: a release installs over every Window already on my TVs
+   (a build from another machine has a different signature and doesn't). Check for adb and gh (`brew install
+   android-platform-tools gh`), then download it:
+   `gh release download --repo Dananz/window --pattern 'window-*.apk' --dir dist --clobber`
+   (tell me which version that is: `gh release view --repo Dananz/window --json tagName`). Only if I ask
+   for a build: also JDK 21 and the Android SDK (platform 37, build tools 37), `brew install openjdk@21`
+   and the SDK with sdkmanager or Android Studio. Create local.properties from local.properties.example:
+   sdk.dir (when building), and tv=<TV-IP>:5555. Leave ha.url and ha.token out.
 
 2. Connect. Run `adb connect <TV-IP>:5555`. If it's refused, tell me how to turn on Developer options and
    Network debugging on the TV (Settings > System > About, press the build 7 times; then Developer
@@ -22,8 +27,10 @@ look at the TV whenever a prompt might appear on it.
    check `adb -s <TV-IP>:5555 shell getprop ro.build.version.sdk` is 31 or higher (Android 12), and tell me the
    model (`ro.product.model`).
 
-3. Build and install: `scripts/tv-install.sh`. If the install fails with a signature error, Window was
-   installed from another machine's build: ask me before running `adb uninstall com.dananz.window`.
+3. Install: `APK=$(ls dist/window-*.apk | sort -V | tail -1) scripts/tv-install.sh` (or, if I asked for a
+   build, plain `scripts/tv-install.sh`). If the install fails with a signature error, Window was
+   installed from another machine's build: ask me before running `adb uninstall com.dananz.window` (it
+   clears Window's settings and its Home Assistant sign-in).
    Afterwards, check the Home button service is on:
    `adb -s <TV-IP>:5555 shell settings get secure enabled_accessibility_services` lists
    com.dananz.window/com.dananz.window.HomeButton. Take a screenshot

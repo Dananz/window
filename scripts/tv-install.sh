@@ -1,14 +1,18 @@
 #!/bin/sh
-# Builds the release APK and puts it on the TV. An update switches the Home button's
+# Builds the release APK and puts it on the TV (or, with APK=<file>, puts that one on it: a release
+# downloaded from GitHub). An update switches the Home button's
 # accessibility service off, and a debug build is too slow on this TV, so every install goes
 # through here: release build, compiled ahead of time, service and TCL auto start on again.
 set -e
 . "$(dirname "$0")/tv-env.sh"
 PKG=com.dananz.window
 cd "$(dirname "$0")/.."
-export JAVA_HOME=${JAVA_HOME:-$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home}
-./gradlew -q assembleRelease
-adb -s "$TV" install -r app/build/outputs/apk/release/app-release.apk
+if [ -z "$APK" ]; then
+  export JAVA_HOME=${JAVA_HOME:-$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home}
+  ./gradlew -q assembleRelease
+  APK=app/build/outputs/apk/release/app-release.apk
+fi
+adb -s "$TV" install -r "$APK"
 adb -s "$TV" shell cmd package compile -m speed -f $PKG
 adb -s "$TV" shell pm grant $PKG android.permission.ACCESS_FINE_LOCATION
 # Lets Window switch its Home button service back on by itself after the next update or force stop
