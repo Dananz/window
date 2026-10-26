@@ -1,12 +1,19 @@
 # Set up Window on a TV, with Claude
 
-Open Claude Code in this repository's folder and paste the prompt below. Fill in the TV's address first
-(Settings > Network & Internet > your network, on the TV).
+Open Claude Code in this repository's folder and paste the prompt below. Claude finds the TVs on your
+network and asks which one to set up.
 
 ---
 
 ```text
-Set up Window, the Google TV home screen in this repository, on my TV at <TV-IP>. Read README.md first.
+Set up Window, the Google TV home screen in this repository, on one of my TVs. Read README.md first.
+
+Find the TV yourself, then ask me which one with AskUserQuestion: one option per TV, its name and address
+(at most four options: with more TVs, put the rest in the question text, and I can type one under Other). The TVs on the network: the devices in `arp -a` that answer on port
+8008 (Google Cast) or 5555 (adb), e.g. `nc -z -G 1 <ip> 8008`; each one's name, as I gave it in the Google
+Home app: `curl -s "http://<ip>:8008/setup/eureka_info?params=name,device_info"` (`name`). Use the chosen
+TV's address as <TV-IP> below. If none answer, ask me for the address (on the TV: Settings > Network &
+Internet > the network).
 
 The TV is next to me. Before anything that changes the TV, tell me what you're about to do. Ask me to
 look at the TV whenever a prompt might appear on it.
