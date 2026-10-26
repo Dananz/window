@@ -59,7 +59,10 @@ object Panel {
         val mode = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)?.mode
         return (mode?.physicalWidth ?: 1920) to (mode?.physicalHeight ?: 1080)
     }
-    fun is4k(context: Context) = size(context).first >= 3000
+    // Off: on the Sony, once a 4K layer has been up, every app's video then plays in the top left quarter
+    // of the screen, until the TV restarts
+    const val SHARP = false
+    fun is4k(context: Context) = SHARP && size(context).first >= 3000
 }
 
 // The sharp copies, kept on the GPU; two at most (the one shown and the one it fades from), as each is
