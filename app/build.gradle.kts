@@ -17,8 +17,8 @@ android {
         // Android 13: the rain is an AGSL RuntimeShader
         minSdk = 31
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.2"
+        versionCode = 5
+        versionName = "1.0.3"
         buildConfigField("String", "HA_URL", "\"${local.getProperty("ha.url", "")}\"")
         buildConfigField("String", "HA_TOKEN", "\"${local.getProperty("ha.token", "")}\"")
     }
