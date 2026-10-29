@@ -28,6 +28,9 @@ object Prefs {
     // Minutes between the clock's moves on the screensaver; 0 never
     var clockMoves by mutableIntStateOf(2)
         private set
+    // The screensaver shows the song any app is playing, in the corner across from the clock
+    var saverMusic by mutableStateOf(true)
+        private set
     // Reduced: the camera stays still and the room doesn't drift
     var reduced by mutableStateOf(false)
         private set
@@ -49,6 +52,7 @@ object Prefs {
         clock24 = sp.getBoolean("clock24", true)
         saverShows = sp.getInt("saver_shows", 0)
         clockMoves = sp.getInt("clock_moves", 2)
+        saverMusic = sp.getBoolean("saver_music", true)
         reduced = sp.getBoolean("reduced", false)
         drift = sp.getBoolean("drift", true)
         tiles = sp.getString("tiles", null)?.let(::readTiles) ?: DEFAULT_TILES
@@ -60,6 +64,7 @@ object Prefs {
     fun changeStartApp(v: String?) { startApp = v; sp.edit().putString("start_app", v).apply() }
     fun changeClock24(v: Boolean) { clock24 = v; sp.edit().putBoolean("clock24", v).apply() }
     fun changeSaverShows(v: Int) { saverShows = v; sp.edit().putInt("saver_shows", v).apply() }
+    fun changeSaverMusic(v: Boolean) { saverMusic = v; sp.edit().putBoolean("saver_music", v).apply() }
     fun changeClockMoves(v: Int) { clockMoves = v; sp.edit().putInt("clock_moves", v).apply() }
     fun changeReduced(v: Boolean) { reduced = v; sp.edit().putBoolean("reduced", v).apply() }
     fun changeDrift(v: Boolean) { drift = v; sp.edit().putBoolean("drift", v).apply() }

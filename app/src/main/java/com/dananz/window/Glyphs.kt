@@ -28,6 +28,9 @@ import com.adamglin.phosphoricons.regular.Fan
 import com.adamglin.phosphoricons.fill.House as HouseFill
 import com.adamglin.phosphoricons.fill.Television as TelevisionFill
 import com.adamglin.phosphoricons.bold.CaretUp
+import com.adamglin.phosphoricons.fill.Play
+import com.adamglin.phosphoricons.fill.Pause
+import com.adamglin.phosphoricons.fill.SkipForward
 import com.adamglin.phosphoricons.bold.CaretDown as CaretDownBold
 
 // Phosphor, the icon set the prototype used
@@ -43,6 +46,9 @@ object Glyphs {
     val Fan = PhosphorIcons.Regular.Fan
     val Home = PhosphorIcons.Fill.HouseFill
     val Tv = PhosphorIcons.Fill.TelevisionFill
+    val Play = PhosphorIcons.Fill.Play
+    val Pause = PhosphorIcons.Fill.Pause
+    val Next = PhosphorIcons.Fill.SkipForward
 
     fun bulb(on: Boolean, all: Boolean): ImageVector = when {
         all && on -> PhosphorIcons.Fill.LightbulbFilamentFill

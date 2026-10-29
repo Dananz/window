@@ -56,6 +56,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -71,6 +72,30 @@ import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.draw.clip
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.style.TextOverflow
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.fill.MusicNotes
 import java.time.LocalTime
 
 // Window's screensaver: the room as Window shows it, the camera moving in through the window, and as it
@@ -127,6 +152,10 @@ class Screensaver : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
         super.onDetachedFromWindow()
     }
 }
+
+// The song's art, in design pixels, and its box's corners
+const val ART = 168
+const val ART_RADIUS = 16
 
 // Where the time sits, in turn (start and end follow the language)
 private val CORNERS = listOf(Alignment.BottomStart, Alignment.TopEnd, Alignment.BottomEnd, Alignment.TopStart)
@@ -213,11 +242,12 @@ fun Dream(preview: Boolean) {
         step = "alone"
         aloneAt = System.nanoTime()
         delay(700)
-        if (Prefs.saverShows != 2) words.animateTo(1f, glide(Motion.TEXT_IN * 2))
+        words.animateTo(1f, glide(Motion.TEXT_IN * 2))
         while (true) {
             val every = Prefs.clockMoves
             delay((if (every == 0) 10 else every) * 60_000L)
-            if (every == 0 || Prefs.saverShows == 2) continue
+            // The song moves with the clock, even with the clock hidden: nothing stays lit in one place
+            if (every == 0 || (Prefs.saverShows == 2 && Music.track == null)) continue
             words.animateTo(0f, glide(Motion.TEXT_OUT * 2))
             corner = (corner + 1) % CORNERS.size
             words.animateTo(1f, glide(Motion.TEXT_IN * 2))
@@ -347,23 +377,52 @@ fun Dream(preview: Boolean) {
                 }
             })
         }
-        if (Prefs.saverShows != 2) {
-            val c = CORNERS[corner]
-            val start = c == Alignment.BottomStart || c == Alignment.TopStart
-            val top = c == Alignment.TopStart || c == Alignment.TopEnd
-            // A soft shade under the words so they read on a bright sky
-            // Read in drawing and in the layer, so the drift moves them without recomposing
-            fun float(): Float {
-                val ms = if (aloneAt == 0L) 0f else ((frameNs.longValue - aloneAt) / 1e6f).coerceAtLeast(0f)
-                return driftAt(ms) * DRIFT * zoomAt(ms) * PARALLAX
-            }
+        val c = CORNERS[corner]
+        val start = c == Alignment.BottomStart || c == Alignment.TopStart
+        val top = c == Alignment.TopStart || c == Alignment.TopEnd
+        // Read in drawing and in the layer, so the drift moves the words without recomposing
+        fun float(): Float {
+            val ms = if (aloneAt == 0L) 0f else ((frameNs.longValue - aloneAt) / 1e6f).coerceAtLeast(0f)
+            return driftAt(ms) * DRIFT * zoomAt(ms) * PARALLAX
+        }
+        // The song playing, in the corner across from the clock; kept a moment as it fades out
+        // Off in Window settings: nothing is read at all
+        DisposableEffect(Prefs.saverMusic) {
+            val on = Prefs.saverMusic
+            if (on) Music.start(context)
+            onDispose { if (on) Music.stop() }
+        }
+        val song = Music.track.takeIf { Prefs.saverMusic }
+        var lastSong by remember { mutableStateOf<Track?>(null) }
+        val songIn = remember { Animatable(0f) }
+        LaunchedEffect(song) { if (song != null) lastSong = song }
+        LaunchedEffect(song != null) {
+            if (song != null) songIn.animateTo(1f, glide(Motion.TEXT_IN * 2))
+            else { songIn.animateTo(0f, glide(Motion.TEXT_OUT * 2)); lastSong = null }
+        }
+        val clock = Prefs.saverShows != 2
+        // A soft shade under each corner's words so they read on a bright sky
+        if (land4k == null) Box(
+            Modifier.fillMaxSize().drawBehind {
+                val u = size.width / 1920
+                fun shade(left: Boolean, up: Boolean, a: Float) {
+                    if (a > 0f) drawRect(Brush.radialGradient(listOf(Color(0x99000000), Color.Transparent), radius = 1100f * u,
+                        center = androidx.compose.ui.geometry.Offset(((if (left) 0f else 1920f) + float()) * u, (if (up) 0f else 1080f) * u)), alpha = a * .9f)
+                }
+                if (clock) shade(start != rtl, top, words.value)
+                shade(start == rtl, !top, words.value * songIn.value)
+            },
+        )
+        lastSong?.let { t ->
             if (land4k == null) Box(
-                Modifier.fillMaxSize().graphicsLayer { alpha = words.value * .9f }.drawBehind {
-                    val u = size.width / 1920
-                    drawRect(Brush.radialGradient(listOf(Color(0x99000000), Color.Transparent), radius = 1100f * u,
-                        center = androidx.compose.ui.geometry.Offset(((if (start != rtl) 0f else 1920f) + float()) * u, (if (top) 0f else 1080f) * u)))
-                },
-            )
+                Modifier.align(if (top) (if (start) Alignment.BottomEnd else Alignment.BottomStart) else (if (start) Alignment.TopEnd else Alignment.TopStart))
+                    .padding(horizontal = 96.dp, vertical = 80.dp)
+                    .graphicsLayer { alpha = words.value * songIn.value; translationY = (1 - words.value * songIn.value) * 10.dp.toPx(); translationX = float().dp.toPx() },
+            ) { Song(t, start = !start, top = !top) }
+            // The panel's 4K surface (Panel.SHARP, off for now) draws only the clock's picture: the song
+            // would need its own picture made the way wordsPicture is
+        }
+        if (clock) {
             if (land4k == null) Column(
                 Modifier.align(c).padding(horizontal = 96.dp, vertical = 80.dp)
                     .graphicsLayer { alpha = words.value; translationY = (1 - words.value) * 10.dp.toPx(); translationX = float().dp.toPx() },
@@ -414,4 +473,125 @@ private fun Words(now: LocalTime, today: LocalDate, w: Weather?) {
             )
         }
     }
+}
+
+// The song any app is playing: the art at the corner's edge, the title and the artist beside it. A new
+// song comes in as the last one goes: inside the cover's box the old cover slides out to one side as the
+// new one slides in from the other (the box itself stays put), and the words fade out, then in
+@Composable
+private fun Song(track: Track, start: Boolean, top: Boolean) {
+    val reduced = Prefs.reduced
+    val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    // The new cover comes from the side the reading goes to: from the right in English, the left in Hebrew
+    val from = if (rtl) -1 else 1
+    val art: @Composable () -> Unit = {
+        Box(Modifier.size(ART.dp).clip(RoundedCornerShape(ART_RADIUS.dp))) {
+            AnimatedContent(
+                targetState = track,
+                contentKey = { it.key },
+                transitionSpec = {
+                    if (reduced) fadeIn(glide(600)) togetherWith fadeOut(glide(600))
+                    else slideInHorizontally(glide(SONG_SLIDE)) { it * from } togetherWith slideOutHorizontally(glide(SONG_SLIDE)) { -it * from }
+                },
+                label = "cover",
+            ) { t ->
+                // The art comes after the words for some players: it fades in where the note was
+                Crossfade(t.art, animationSpec = glide(700), label = "art") { a ->
+                    if (a != null) Image(a, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    else Box(Modifier.fillMaxSize().background(Color(0x26FFFFFF)), contentAlignment = Alignment.Center) {
+                        Icon(PhosphorIcons.Fill.MusicNotes, null, Modifier.size(56.dp), tint = Ink.text.copy(alpha = .8f))
+                    }
+                }
+            }
+            // On the box, not on the cover: they stay where they are as the covers slide under them
+            Playing(Modifier.align(Alignment.BottomStart).padding(14.dp), still = reduced, dark = track.art != null && (if (rtl) track.lightRight else track.lightLeft))
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+        if (start) art()
+        AnimatedContent(
+            targetState = track,
+            contentKey = { it.key },
+            contentAlignment = if (start) Alignment.CenterStart else Alignment.CenterEnd,
+            transitionSpec = { fadeIn(glide(SONG_FADE, delay = SONG_FADE)) togetherWith fadeOut(glide(SONG_FADE)) using SizeTransform(clip = false) },
+            label = "words",
+        ) { t ->
+            Column(Modifier.widthIn(max = 640.dp), horizontalAlignment = if (start) Alignment.Start else Alignment.End) {
+                val align = if (start) TextAlign.Start else TextAlign.End
+                Text(
+                    t.title, color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium,
+                    fontSize = 36.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = align, style = TextStyle(shadow = SHADOW),
+                )
+                if (t.artist.isNotEmpty()) Text(
+                    t.artist, Modifier.padding(top = 4.dp), color = Ink.text.copy(alpha = .75f), fontFamily = Golos,
+                    fontSize = 28.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = align, style = TextStyle(shadow = SHADOW),
+                )
+            }
+        }
+        if (!start) art()
+    }
+}
+// The covers' slide, and each half of the words' fade (out, then in)
+private const val SONG_SLIDE = 900
+private const val SONG_FADE = 380
+
+// The sound bars on the cover: four bars, bass to treble, rising and falling with what the TV plays (a
+// dot each in silence), black on a light cover and white on a dark one, with a soft shadow. When the TV
+// won't give its sound, they move by themselves while the song plays; paused, they sink to dots and stay
+// still. Drawn from the frame time, without recomposing
+private const val BAR = 6f
+private const val BAR_GAP = 5f
+private const val BAR_HIGH = 30f
+// When the bars move by themselves: each bar's two waves (Hz) and where they start, so no two move together
+private val BAR_WAVES = listOf(floatArrayOf(.55f, 1.1f, 0f), floatArrayOf(.8f, .45f, 1.9f), floatArrayOf(.4f, .95f, 4.2f), floatArrayOf(1f, .6f, 2.6f))
+
+@Composable
+private fun Playing(modifier: Modifier, still: Boolean, dark: Boolean) {
+    val frame = remember { mutableLongStateOf(0L) }
+    val levels = remember { FloatArray(4) }
+    val shown = remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
+    LaunchedEffect(still) {
+        var last = 0L
+        while (true) withFrameNanos { ns ->
+            val dt = if (last == 0L) 0f else ((ns - last) / 1e9f).coerceAtMost(.1f)
+            last = ns
+            val sec = ns / 1e9f
+            for (i in 0 until 4) {
+                val target = when {
+                    !Music.playing -> 0f
+                    still -> listOf(.55f, .9f, .4f, .7f)[i]
+                    Music.heard -> Music.bands[i]
+                    else -> BAR_WAVES[i].let { (a, b, p) -> ((kotlin.math.sin((sec * a + p) * 2 * Math.PI) + kotlin.math.sin((sec * b + p * .7f) * 2 * Math.PI)) / 4 + .5f).toFloat() }
+                }
+                // Gently: up a little faster than down, never a jump
+                val k = 1 - kotlin.math.exp(-dt * (if (target > levels[i]) 9f else 4.5f))
+                levels[i] += (target - levels[i]) * k
+            }
+            val silent = !Music.playing || (Music.heard && !still && (0 until 4).all { Music.bands[it] < .03f })
+            Music.quiet(ns, silent)
+            shown.floatValue = Music.barsShown(ns)
+            frame.longValue = ns
+        }
+    }
+    val density = LocalDensity.current.density
+    // White (the words' own, so the bars belong with the title beside them) or black, eased from one to the
+    // other as a cover of the other kind slides in
+    val ink = remember { Animatable(if (dark) 1f else 0f) }
+    LaunchedEffect(dark) { ink.animateTo(if (dark) 1f else 0f, glide(SONG_SLIDE)) }
+    val paint = remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
+    Box(modifier.size((BAR * 4 + BAR_GAP * 3).dp, BAR_HIGH.dp).graphicsLayer { alpha = shown.floatValue }.drawBehind {
+        frame.longValue
+        val u = density
+        val d = ink.value
+        paint.color = androidx.compose.ui.graphics.lerp(Ink.text, Color(0xFF141414), d).toArgb()
+        paint.setShadowLayer(6f * u, 0f, 1f * u, androidx.compose.ui.graphics.lerp(Color(0x59000000), Color(0x26000000), d).toArgb())
+        val canvas = drawContext.canvas.nativeCanvas
+        for (i in 0 until 4) {
+            // Never quite full: the tallest a bar gets is most of its height
+            val h = (BAR + (BAR_HIGH - BAR) * .85f * levels[i]) * u
+            val x = i * (BAR + BAR_GAP) * u
+            val y = (size.height - h) / 2
+            canvas.drawRoundRect(x, y, x + BAR * u, y + h, BAR * u / 2, BAR * u / 2, paint)
+        }
+    })
 }

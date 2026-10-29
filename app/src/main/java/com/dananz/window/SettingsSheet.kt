@@ -114,7 +114,7 @@ private val SECTIONS = listOf(
     Section("lang", "Language", PhosphorIcons.Fill.Translate, listOf(Row("lang", "Language", RowKind.Choice))),
     Section("saver", "Screensaver", PhosphorIcons.Fill.MoonStars, listOf(
         Row("saver", "Window screensaver", RowKind.Toggle), Row("after", "Starts after", RowKind.Choice),
-        Row("shows", "Shows", RowKind.Choice), Row("moves", "Clock moves", RowKind.Choice), Row("preview", "Preview", RowKind.Action),
+        Row("shows", "Shows", RowKind.Choice), Row("music", "Now playing", RowKind.Toggle), Row("moves", "Clock moves", RowKind.Choice), Row("preview", "Preview", RowKind.Action),
     )),
     Section("smart", "Smart home", PhosphorIcons.Fill.Lightbulb, listOf(Row("tiles", "Tiles on the wall", RowKind.Link), Row("ha", "Home Assistant", RowKind.Link), Row("govee", "Govee", RowKind.Link), Row("sensibo", "Sensibo", RowKind.Link), Row("tuya", "Tuya", RowKind.Link))),
     Section("motion", "Motion", PhosphorIcons.Fill.Sparkle, listOf(Row("motion", "Animations", RowKind.Choice), Row("drift", "Room drifts with the apps", RowKind.Toggle))),
@@ -189,6 +189,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         "saver" -> t(if (saverOn) "On" else "Off")
         "after" -> if (after > 24 * 60) t("Never") else f("{0} min", after)
         "shows" -> t(listOf("Time and weather", "Time only", "Landscape only")[Prefs.saverShows])
+        "music" -> t(if (Prefs.saverMusic) "On" else "Off")
         "moves" -> if (Prefs.clockMoves == 0) t("Never") else t("Every ${Prefs.clockMoves} min")
         "motion" -> if (Prefs.reduced) t("Reduced") else (if (Lang.he) "מלאות" else "Full")
         "drift" -> t(if (Prefs.drift) "On" else "Off")
@@ -205,7 +206,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         else -> ""
     }
 
-    fun on(id: String) = when (id) { "saver" -> saverOn; "drift" -> Prefs.drift; else -> false }
+    fun on(id: String) = when (id) { "saver" -> saverOn; "music" -> Prefs.saverMusic; "drift" -> Prefs.drift; else -> false }
 
     private fun step(id: String, d: Int) {
         fun <T> next(list: List<T>, cur: T) = list[((list.indexOf(cur).coerceAtLeast(0) + d) % list.size + list.size) % list.size]
@@ -234,6 +235,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
                     RowKind.Choice -> step(r.id, 1)
                     RowKind.Toggle -> when (r.id) {
                         "saver" -> { saverOn = !saverOn; Saver.setWindow(context, saverOn) }
+                        "music" -> { Prefs.changeSaverMusic(!Prefs.saverMusic); if (Prefs.saverMusic) Music.grant(context) }
                         "drift" -> Prefs.changeDrift(!Prefs.drift)
                     }
                     RowKind.Link -> openSub(r.id)

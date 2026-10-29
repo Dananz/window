@@ -44,6 +44,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.animation.core.animateFloatAsState as fade
@@ -111,6 +112,7 @@ class MainActivity : ComponentActivity() {
         away = false
         Keys.repair(this)
         Saver.byDefault(this)
+        if (Prefs.saverMusic) Music.grant(this)
         // Apps come and go while we are away (installs, updates): read them again each time
         apps = loadApps(this)
         resumes++
@@ -177,6 +179,8 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
     LaunchedEffect(focus, placeOpen) { Log.d("Window", "focus=$focus open=$placeOpen") }
     LaunchedEffect(Unit) { while (true) { now = LocalTime.now(); today = LocalDate.now(); delay(15_000) } }
     LaunchedEffect(Unit) { room.poll() }
+    // The small player under the clock follows what plays on only while the home screen shows
+    LifecycleStartEffect(Unit) { Player.start(context); onStopOrDispose { Player.stop() } }
     LaunchedEffect(Unit) { while (true) { runCatching { loadWeather() }.onSuccess { weather = it; Seen.weather = it }.onFailure { Log.w("Window", "weather", it) }; delay(10 * 60_000) } }
 
     // A place from the dropdown: shown, kept, and the dropdown closed
@@ -196,6 +200,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
         room.lights.map { "light-${it.id}" } + room.acs.map { "ac-${it.id}" }
     val rows = listOf(
         listOf("qs-btn", "place-btn") + (0 until dayCount).map { "day-$it" },
+        if (Player.song != null) listOf(PLAYER, PLAYER_NEXT) else emptyList(),
         controls.ifEmpty { listOf("add-tiles") },
         apps.indices.map { "app-$it" },
     ).filter { it.isNotEmpty() }
@@ -210,7 +215,12 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
     }
     // The last control focused above the apps, where Back from the apps returns to
     var above by remember { mutableStateOf("all-lights") }
-    LaunchedEffect(focus) { if (!focus.startsWith("app-") && rows.any { focus in it }) above = focus }
+    // (never the player, which goes when the song does)
+    LaunchedEffect(focus) { if (!focus.startsWith("app-") && !focus.startsWith(PLAYER) && rows.any { focus in it }) above = focus }
+    // The song ended with the remote on the player: up to where the remote was before
+    LaunchedEffect(Player.song == null) {
+        if (Player.song == null && focus.startsWith(PLAYER)) focus = above.takeIf { a -> rows.any { a in it } } ?: rows.first().first()
+    }
 
     fun move(pressed: Dir) {
         val d = visual(pressed)
@@ -245,6 +255,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
     fun tap(id: String) {
         val anyOn = room.lights.any { it.level > 0 }
         when {
+            id == PLAYER -> Player.toggle()
             id == "all-lights" -> room.lights.filter { it.kind == Kind.Light }.forEach {
                 // Off keeps each light's level, so on brings the room back as it was
                 if (it.level > 0) lastLevel[it.id] = it.level
@@ -259,8 +270,9 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
             }
         }
     }
-    fun holdable(id: String) = (id.startsWith("light-") && room.lights.any { "light-${it.id}" == id && it.kind == Kind.Light }) || room.acUnit(id) != null
-    fun open(id: String) { acRow = 0; grabbed = id }
+    fun holdable(id: String) = id == PLAYER || (id.startsWith("light-") && room.lights.any { "light-${it.id}" == id && it.kind == Kind.Light }) || room.acUnit(id) != null
+    // Held on the player it opens the app playing, and nothing is grabbed
+    fun open(id: String) { if (id == PLAYER) Player.open(context) else { acRow = 0; grabbed = id } }
 
     fun adjust(pressed: Dir) {
         // Right is always toward the right of the screen: in Hebrew rows run the other way
@@ -293,6 +305,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
             focus == "qs-btn" -> { tv.refresh(); quickOpen = true; focus = "qs-vol" }
             focus == "add-tiles" -> { tv.refresh(); quickOpen = true; focus = "qs-window"; settings.show(); settings.showTiles() }
             focus == "all-lights" -> tap(focus)
+            focus == PLAYER_NEXT -> Player.next()
             // Opening the list lands on the view that is showing
             focus == "place-btn" -> if (placeOpen) placeOpen = false else { placeOpen = true; focus = "place-${place.name}" }
             // Off, or on with a new place right away
@@ -487,6 +500,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
             PlaceSwitch(place, focus == "place-btn", placeOpen, focus)
             Forecast(weather, day, focus)
         }
+        MiniPlayer(focus, dim = appIndex != null)
         if ("controls" !in Off.parts) ControlsRow(room, focus, grabbed, acRow, dim = appIndex != null)
         if (apps.isNotEmpty() && "apps" !in Off.parts) AppsCarousel(apps, appIndex.takeUnless { all.open })
         AllApps(all)

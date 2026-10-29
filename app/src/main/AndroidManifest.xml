@@ -5,6 +5,9 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The screensaver's sound bars: the spectrum of what the TV plays (levels, never the sound); granted over adb -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Quick settings says whether the TV is on Wi-Fi or Ethernet -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- The Wi-Fi network's name: Android shows it only to apps that may know the location -->
@@ -67,6 +70,17 @@
             <intent-filter>
                 <action android:name="android.service.dreams.DreamService" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
+        <!-- What's playing, for the screensaver: switched on, never started (see NowPlaying.kt) -->
+        <service
+            android:name=".NowPlaying"
+            android:label="Window now playing"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
 

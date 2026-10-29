@@ -280,6 +280,7 @@ private val HE = mapOf(
     "30 min" to "30 דק׳",
     "Shows" to "מציג",
     "Clock moves" to "השעון זז",
+    "Now playing" to "מה מתנגן",
     "Every 2 min" to "כל 2 דק׳",
     "Every 5 min" to "כל 5 דק׳",
     "Every 10 min" to "כל 10 דק׳",
