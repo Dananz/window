@@ -360,7 +360,7 @@ private const val PAN = .07f
 
 // --- Baking ---
 
-// Bake at the screen's own size: the photos are 1672 wide, so a bigger bake only costs GPU bandwidth
+// Bake at the screen's own size: the room photos are 1920 wide (from 4K masters), so a bigger bake only costs GPU bandwidth
 private const val K = 1f
 private const val BW = (1920 * K).toInt()
 private const val BH = (1080 * K).toInt()
