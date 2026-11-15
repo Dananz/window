@@ -27,14 +27,33 @@ sh pm list packages $PKG | grep -q "$PKG" || { echo "Window is not installed; ru
 mkdir -p "$(dirname "$0")/../backup"
 sh pm list packages -d > "$(dirname "$0")/../backup/disabled-before-$(date +%Y%m%d-%H%M%S).txt"
 
-sh pm disable-user --user 0 $STOCK
+# The order matters (CleanYourTV's TROUBLESHOOTING): with Google TV's home off and the setup wizard still
+# on, Home goes to the wizard's RecoveryActivity, and a reboot in that state has factory-reset TVs. So
+# the wizard goes first, and Google TV's home only once the wizard is confirmed off.
+off() { sh pm list packages --user 0 -d "$1" | tr -d '\r' | grep -qx "package:$1"; }
+sh cmd package set-home-activity --user 0 $PKG/.MainActivity
 sh pm disable-user --user 0 $SETUP
+off $SETUP || { echo "The setup wizard did not switch off; Google TV's home was left on. Nothing else changed." >&2; exit 1; }
+sh pm disable-user --user 0 $STOCK
 sh cmd package set-home-activity --user 0 $PKG/.MainActivity
 # The screensaver
 sh settings put secure screensaver_components $PKG/.Screensaver
 sh settings put secure screensaver_enabled 1
 
-# Ground truth: what actually has focus after Home
+# Ground truth: what Home resolves to, and what has focus after Home
+home="$(sh cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tr -d '\r' | tail -n 1)"
 sh input keyevent KEYCODE_HOME
 sleep 2
-sh dumpsys activity activities | grep -m1 mFocusedApp
+focus="$(sh dumpsys activity activities | tr -d '\r' | grep -m1 mFocusedApp)"
+echo "Home: $home"
+echo "$focus"
+case "$home $focus" in
+  *RecoveryActivity* | *FallbackHome*)
+    echo "Home went to the setup wizard's recovery screen or a blank fallback, not Window. Do not reboot the TV." >&2
+    echo "Run scripts/tv-restore.sh now (it switches Google TV's home on first, then the wizard)." >&2
+    exit 1 ;;
+esac
+case "$home" in
+  "$PKG/.MainActivity" | "$PKG/$PKG.MainActivity") ;;
+  *) echo "Home is not Window ($home). Do not reboot the TV; run scripts/tv-restore.sh." >&2; exit 1 ;;
+esac

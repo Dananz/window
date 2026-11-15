@@ -67,6 +67,11 @@ Notes for Claude, if things go sideways:
   `tv-install.sh` turns it on last; Window also turns it back on by itself when it starts (it has
   WRITE_SECURE_SETTINGS).
 - `appops set ... AUTO_START` exists only on TCL TVs; elsewhere it's skipped.
+- Google TV's home (launcherx) and its setup wizard (setupwraith) go in a fixed order: the wizard off
+  first, then the home; the home on first, then the wizard. With the wizard on and the home off, Home
+  lands on the wizard's `.RecoveryActivity`, and a reboot in that state has factory-reset TVs (found by
+  CleanYourTV, issue #3578). If a screenshot or `mFocusedApp` shows `RecoveryActivity` or `FallbackHome`,
+  don't reboot: run `scripts/tv-restore.sh`, or `pm enable com.google.android.apps.tv.launcherx` by hand.
 - A TV with a second user: use `--user 0` with `pm`.
 - Held volume or arrows on the remote step only once: the Home button service is in the way (its key
   filter stops keys repeating on some remotes, a Sony BRAVIA's). If Home already brings Window up with
