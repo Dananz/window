@@ -253,22 +253,7 @@ fun ControlsRow(room: Room, focus: String, grabbed: String?, acRow: Int, dim: Bo
             if (lights.isNotEmpty()) item("all-lights") { LightTile(null, "All lights", if (anyOn) lights.maxOf { it.level } else 0, focus == "all-lights", false, all = true) }
             items(room.lights, key = { "light-${it.id}" }) { l -> LightTile(l, l.name, l.level, focus == "light-${l.id}", grabbed == "light-${l.id}") }
             items(room.acs, key = { "ac-${it.id}" }) { u -> AcTile(u.name, u.ac, focus == "ac-${u.id}", grabbed == "ac-${u.id}", acRow) }
-            // Nothing on the wall yet: one tile that opens the page that puts things there
-            if (room.lights.isEmpty() && room.acs.isEmpty()) item("add-tiles") { AddTiles(focus == "add-tiles") }
         }
     }
 }
 
-@Composable
-private fun AddTiles(focused: Boolean) {
-    Row(
-        Modifier.size(344.dp, 112.dp).ring(focused, 28.dp).clip(TILE).background(Ink.glass).padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Bulb(false)
-        Column {
-            Text(t("Add tiles"), color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 19.sp, lineHeight = 22.sp)
-            Text(t("Lights, the AC and more, from Window settings"), color = Ink.text.copy(alpha = .7f), fontFamily = Golos, fontSize = 14.sp, lineHeight = 17.sp)
-        }
-    }
-}

@@ -170,8 +170,8 @@ private fun ShortcutMark(app: TvApp, mark: State<Float>, size: State<Float>) {
     ) {
         // Google TV by Google's own G (from svgl), in its colours; the others in Phosphor
         if (app.shortcut == Shortcut.GoogleTv) Image(painterResource(R.drawable.google_g), null, Modifier.size(34.dp))
-        else Icon(if (app.shortcut == Shortcut.Settings) Glyphs.Gear else Glyphs.Grid, null, Modifier.size(34.dp), tint = Color(0xFFE8EAED))
-        Text(t(when (app.shortcut) { Shortcut.Settings -> "Settings"; Shortcut.AllApps -> "All apps"; else -> app.name }), color = Color(0xFFE8EAED), fontFamily = Syne, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        else Icon(Glyphs.Grid, null, Modifier.size(34.dp), tint = Color(0xFFE8EAED))
+        Text(t(if (app.shortcut == Shortcut.AllApps) "All apps" else app.name), color = Color(0xFFE8EAED), fontFamily = Syne, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
     }
 }
 

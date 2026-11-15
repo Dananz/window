@@ -38,6 +38,9 @@ object Prefs {
         private set
     var tiles by mutableStateOf(emptyList<Tile>())
         private set
+    // The smart home tiles on the home screen; off for a home with nothing smart to put there
+    var wall by mutableStateOf(true)
+        private set
     // The view changes by itself every this many minutes, home screen and screensaver alike; 0: it stays.
     // shuffleEvery keeps the last interval, for the dropdown's Shuffle to turn back on with
     var shuffle by mutableIntStateOf(0)
@@ -55,6 +58,7 @@ object Prefs {
         saverMusic = sp.getBoolean("saver_music", true)
         reduced = sp.getBoolean("reduced", false)
         drift = sp.getBoolean("drift", true)
+        wall = sp.getBoolean("wall", true)
         tiles = sp.getString("tiles", null)?.let(::readTiles) ?: DEFAULT_TILES
         shuffle = sp.getInt("shuffle", 0)
         shuffleEvery = sp.getInt("shuffle_every", 30)
@@ -68,6 +72,7 @@ object Prefs {
     fun changeClockMoves(v: Int) { clockMoves = v; sp.edit().putInt("clock_moves", v).apply() }
     fun changeReduced(v: Boolean) { reduced = v; sp.edit().putBoolean("reduced", v).apply() }
     fun changeDrift(v: Boolean) { drift = v; sp.edit().putBoolean("drift", v).apply() }
+    fun changeWall(v: Boolean) { wall = v; sp.edit().putBoolean("wall", v).apply() }
     fun changeShuffle(minutes: Int) {
         shuffle = minutes
         if (minutes > 0) shuffleEvery = minutes

@@ -6,14 +6,13 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
-import android.provider.Settings
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 
 // One card in the apps row: an installed app with the banner it ships for the TV launcher,
-// or one of the home's own shortcuts (back to Google TV, Settings)
+// or one of the home's own shortcuts (All apps, back to the TV's own home)
 data class TvApp(
     val id: String,
     val name: String,
@@ -27,7 +26,7 @@ data class TvApp(
     val system: Boolean = false,
 )
 
-enum class Shortcut { AllApps, GoogleTv, Settings }
+enum class Shortcut { AllApps, GoogleTv }
 
 // Tomer's order, the favorites until they are changed on the All apps screen
 private val PINNED = listOf(
@@ -68,7 +67,8 @@ fun loadApps(context: Context): List<TvApp> {
     return apps + shortcuts(context)
 }
 
-// The home's own cards at the end of the shelf: All apps, Google TV while it is enabled, Settings
+// The home's own cards at the end of the shelf: All apps, and the TV's own home while it is enabled
+// (Settings is the gear at the top)
 fun shortcuts(context: Context): List<TvApp> {
     val pm = context.packageManager
     val all = TvApp("all", "All apps", null, Color(0xFF1B1D22), null, Shortcut.AllApps)
@@ -82,8 +82,7 @@ fun shortcuts(context: Context): List<TvApp> {
             Shortcut.GoogleTv,
         )
     }
-    val settings = TvApp("settings", "Settings", null, Color(0xFF1B1D22), Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), Shortcut.Settings)
-    return listOfNotNull(all, googleTv, settings)
+    return listOfNotNull(all, googleTv)
 }
 
 // Every app the TV can launch, A to Z, for the All apps screen

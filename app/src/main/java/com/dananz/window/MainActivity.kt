@@ -201,9 +201,19 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
     val rows = listOf(
         listOf("qs-btn", "place-btn") + (0 until dayCount).map { "day-$it" },
         if (Player.song != null) listOf(PLAYER, PLAYER_NEXT) else emptyList(),
-        controls.ifEmpty { listOf("add-tiles") },
+        // Nothing smart set up, or the tiles switched off: no row (tiles are added from Window settings)
+        if (Prefs.wall) controls else emptyList(),
         apps.indices.map { "app-$it" },
     ).filter { it.isNotEmpty() }
+    // The tile with focus went (switched off, or taken off the wall): on to the apps
+    val wallShown = Prefs.wall && controls.isNotEmpty()
+    LaunchedEffect(wallShown, controls) {
+        val onTile = focus == "all-lights" || focus.startsWith("light-") || focus.startsWith("ac-")
+        if (onTile && (!wallShown || focus !in controls)) {
+            focus = if (apps.isNotEmpty()) "app-0" else "qs-btn"
+            grabbed = null
+        }
+    }
     val menu = Place.entries.map { "place-${it.name}" } + "place-shuffle"
     // Input or the gear on the remote: quick settings, on the inputs for Input
     LaunchedEffect(panel) {
@@ -303,7 +313,6 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
     fun ok() {
         when {
             focus == "qs-btn" -> { tv.refresh(); quickOpen = true; focus = "qs-vol" }
-            focus == "add-tiles" -> { tv.refresh(); quickOpen = true; focus = "qs-window"; settings.show(); settings.showTiles() }
             focus == "all-lights" -> tap(focus)
             focus == PLAYER_NEXT -> Player.next()
             // Opening the list lands on the view that is showing
@@ -314,8 +323,6 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
             focus.startsWith("place-") -> { Prefs.changeShuffle(0); choose(Place.valueOf(focus.removePrefix("place-"))) }
             focus.startsWith("app-") -> apps.getOrNull(focus.removePrefix("app-").toInt())?.let { app ->
                 if (app.shortcut == Shortcut.AllApps) all.show()
-                // The Settings card is Window's own settings; the TV's are a row away in the quick panel
-                else if (app.shortcut == Shortcut.Settings) { tv.refresh(); quickOpen = true; focus = "qs-window"; settings.show() }
                 else app.intent?.let { runCatching { context.startActivity(it) }.onFailure { e -> Log.w("Window", "launch ${app.id}", e) } }
             }
         }
@@ -341,7 +348,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
         quickOpen = false; placeOpen = false; grabbed = null
         hold?.cancel(); hold = null; held = false
         if (all.open) { while (!all.back()) Unit; closeAll() }
-        if (!rows.any { focus in it } || focus.startsWith("app-")) focus = above
+        if (!rows.any { focus in it } || focus.startsWith("app-")) focus = above.takeIf { a -> rows.any { a in it } } ?: rows.first().first()
     }
 
     val appIndex = focus.takeIf { it.startsWith("app-") }?.removePrefix("app-")?.toIntOrNull()
@@ -472,7 +479,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
                     // Back closes what is open; from the apps it goes back up to where the remote came from
                     Key.Back, Key.Escape -> when {
                         placeOpen -> { placeOpen = false; focus = "place-btn" }
-                        focus.startsWith("app-") -> focus = above
+                        focus.startsWith("app-") -> focus = above.takeIf { a -> rows.any { a in it } } ?: rows.first().first()
                     }
                     else -> return@onPreviewKeyEvent false
                 }
@@ -501,7 +508,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
             Forecast(weather, day, focus)
         }
         MiniPlayer(focus, dim = appIndex != null)
-        if ("controls" !in Off.parts) ControlsRow(room, focus, grabbed, acRow, dim = appIndex != null)
+        if ("controls" !in Off.parts && Prefs.wall) ControlsRow(room, focus, grabbed, acRow, dim = appIndex != null)
         if (apps.isNotEmpty() && "apps" !in Off.parts) AppsCarousel(apps, appIndex.takeUnless { all.open })
         AllApps(all)
         QuickPanel(quickOpen && !settings.open, focus, tv)

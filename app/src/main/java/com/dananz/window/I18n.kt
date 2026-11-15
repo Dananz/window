@@ -179,6 +179,7 @@ private val HE = mapOf(
     "Switching to {0}" to "עובר ל־{0}",
     "Opening {0} in Settings" to "פותח את {0} בהגדרות",
     "Tiles on the wall" to "אריחים במסך",
+    "Smart home tiles" to "אריחי בית חכם",
     "1 tile" to "אריח אחד",
     "{0} tiles" to "{0} אריחים",
     "Connected · {0}" to "מחובר · {0}",

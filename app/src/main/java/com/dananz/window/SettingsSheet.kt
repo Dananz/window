@@ -116,7 +116,7 @@ private val SECTIONS = listOf(
         Row("saver", "Window screensaver", RowKind.Toggle), Row("after", "Starts after", RowKind.Choice),
         Row("shows", "Shows", RowKind.Choice), Row("music", "Now playing", RowKind.Toggle), Row("moves", "Clock moves", RowKind.Choice), Row("preview", "Preview", RowKind.Action),
     )),
-    Section("smart", "Smart home", PhosphorIcons.Fill.Lightbulb, listOf(Row("tiles", "Tiles on the wall", RowKind.Link), Row("ha", "Home Assistant", RowKind.Link), Row("govee", "Govee", RowKind.Link), Row("sensibo", "Sensibo", RowKind.Link), Row("tuya", "Tuya", RowKind.Link))),
+    Section("smart", "Smart home", PhosphorIcons.Fill.Lightbulb, listOf(Row("wall", "Smart home tiles", RowKind.Toggle), Row("tiles", "Tiles on the wall", RowKind.Link), Row("ha", "Home Assistant", RowKind.Link), Row("govee", "Govee", RowKind.Link), Row("sensibo", "Sensibo", RowKind.Link), Row("tuya", "Tuya", RowKind.Link))),
     Section("motion", "Motion", PhosphorIcons.Fill.Sparkle, listOf(Row("motion", "Animations", RowKind.Choice), Row("drift", "Room drifts with the apps", RowKind.Toggle))),
     Section("about", "About", PhosphorIcons.Fill.Info, listOf(Row("version", "Window", RowKind.Info), Row("tv", "TV settings", RowKind.Action))),
 )
@@ -206,7 +206,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         else -> ""
     }
 
-    fun on(id: String) = when (id) { "saver" -> saverOn; "music" -> Prefs.saverMusic; "drift" -> Prefs.drift; else -> false }
+    fun on(id: String) = when (id) { "saver" -> saverOn; "music" -> Prefs.saverMusic; "drift" -> Prefs.drift; "wall" -> Prefs.wall; else -> false }
 
     private fun step(id: String, d: Int) {
         fun <T> next(list: List<T>, cur: T) = list[((list.indexOf(cur).coerceAtLeast(0) + d) % list.size + list.size) % list.size]
@@ -237,6 +237,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
                         "saver" -> { saverOn = !saverOn; Saver.setWindow(context, saverOn) }
                         "music" -> { Prefs.changeSaverMusic(!Prefs.saverMusic); if (Prefs.saverMusic) Music.grant(context) }
                         "drift" -> Prefs.changeDrift(!Prefs.drift)
+                        "wall" -> Prefs.changeWall(!Prefs.wall)
                     }
                     RowKind.Link -> openSub(r.id)
                     RowKind.Action -> when (r.id) {
