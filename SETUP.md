@@ -31,7 +31,7 @@ look at the TV whenever a prompt might appear on it.
 2. Connect. Run `adb connect <TV-IP>:5555`. If it's refused, tell me how to turn on Developer options and
    Network debugging on the TV (Settings > System > About, press the build 7 times; then Developer
    options). If it says unauthorized, ask me to accept the prompt on the TV with "Always allow". Then
-   check `adb -s <TV-IP>:5555 shell getprop ro.build.version.sdk` is 31 or higher (Android 12), and tell me the
+   check `adb -s <TV-IP>:5555 shell getprop ro.build.version.sdk` is 29 or higher (Android 10), and tell me the
    model (`ro.product.model`).
 
 3. Install: `APK=$(ls dist/window-*.apk | sort -V | tail -1) scripts/tv-install.sh` (or, if I asked for a
@@ -72,6 +72,8 @@ Notes for Claude, if things go sideways:
   lands on the wizard's `.RecoveryActivity`, and a reboot in that state has factory-reset TVs (found by
   CleanYourTV, issue #3578). If a screenshot or `mFocusedApp` shows `RecoveryActivity` or `FallbackHome`,
   don't reboot: run `scripts/tv-restore.sh`, or `pm enable com.google.android.apps.tv.launcherx` by hand.
+- An Android TV set (often Android 10 or 11) has `com.google.android.tvlauncher` instead of Google TV's
+  launcherx, and sometimes no setupwraith. The scripts find which one is there; the same order rules apply.
 - A TV with a second user: use `--user 0` with `pm`.
 - Held volume or arrows on the remote step only once: the Home button service is in the way (its key
   filter stops keys repeating on some remotes, a Sony BRAVIA's). For volume, the service steps aside for

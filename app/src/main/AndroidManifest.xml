@@ -29,8 +29,11 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
         </intent>
-        <!-- Google TV's home, for the card that goes back to it -->
+        <!-- The TV's own home (Google TV's, or Android TV's), for the card that goes back to it -->
         <package android:name="com.google.android.apps.tv.launcherx" />
+        <package android:name="com.google.android.tvlauncher" />
+        <!-- Google TV's ambient mode, to tell it from Android TV's when Window's screensaver is switched off -->
+        <package android:name="com.google.android.apps.tv.dreamx" />
     </queries>
 
     <application

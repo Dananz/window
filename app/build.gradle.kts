@@ -15,7 +15,7 @@ android {
     defaultConfig {
         applicationId = "com.dananz.window"
         // Android 13: the rain is an AGSL RuntimeShader
-        minSdk = 31
+        minSdk = 29
         targetSdk = 36
         versionCode = 6
         versionName = "1.0.4"

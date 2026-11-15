@@ -4,7 +4,7 @@ A home screen for Google TV. A room with a window onto a city, the time and the 
 shelf, and your Home Assistant lights and AC on the wall. It replaces Google TV's own home and comes with
 its own screensaver.
 
-Built with Kotlin and Compose for TV. Package `com.dananz.window`, Android 12 (API 31) and up.
+Built with Kotlin and Compose for TV. Package `com.dananz.window`, Android 10 (API 29) and up, on Google TV or Android TV.
 
 ![Home: the room, the clock and forecast, smart home tiles and the apps shelf](docs/home.jpg)
 
@@ -83,7 +83,7 @@ Every script takes `TV=<ip>:5555` on the command line, or reads `tv=` from `loca
 On some TVs (a Sony BRAVIA on Android 12) Home reaches Window by itself once `tv-default.sh` has run, and
 the Home button service only gets in the way: it stops held keys like volume from repeating. List such a TV
 as `nohomebutton=<serial>` in `local.properties` (`adb shell getprop ro.serialno`) and the scripts leave the
-service off. Window runs on Android 12 (API 31) and up.
+service off. Window runs on Android 10 (API 29) and up, on Google TV or Android TV.
 
 ## Setting it up with Claude
 

@@ -1,6 +1,7 @@
 package com.dananz.window
 
 import android.app.ActivityOptions
+import android.os.Build
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -150,7 +151,9 @@ object Player {
         val c = source ?: return
         val shown = c.sessionActivity?.let { pi ->
             runCatching {
-                val o = ActivityOptions.makeBasic().setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                // Android 14 asks the sender to allow the start from the background; before it, there is nothing to ask
+                val o = ActivityOptions.makeBasic()
+                if (Build.VERSION.SDK_INT >= 34) o.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
                 pi.send(context, 0, null, null, null, null, o.toBundle())
             }.isSuccess
         } ?: false

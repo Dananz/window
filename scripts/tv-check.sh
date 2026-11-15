@@ -5,7 +5,7 @@
 PKG=com.dananz.window
 sh() { adb -s "$TV" shell "$@" | tr -d '\r'; }
 drift=0
-for p in com.google.android.apps.tv.launcherx com.google.android.tungsten.setupwraith; do
+for p in $(stock_home) com.google.android.tungsten.setupwraith; do
   if sh pm list packages --user 0 -e "$p" | grep -q "$p"; then echo "on again: $p"; drift=1; fi
 done
 home="$(sh cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -n 1)"

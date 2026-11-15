@@ -13,3 +13,21 @@ no_home_button() {
   serial=$(adb -s "$TV" shell getprop ro.serialno | tr -d '\r')
   grep -qx "nohomebutton=$serial" "$(dirname "$0")/../local.properties" 2>/dev/null
 }
+
+# The TV's own home: Google TV's (launcherx) or, on older Android TV sets (Android 10), tvlauncher.
+# Prints nothing when neither is installed.
+stock_home() {
+  pkgs=$(adb -s "$TV" shell pm list packages --user 0 | tr -d '\r')
+  for p in com.google.android.apps.tv.launcherx com.google.android.tvlauncher; do
+    if printf '%s\n' "$pkgs" | grep -qx "package:$p"; then echo "$p"; return 0; fi
+  done
+  return 0
+}
+
+# Its ambient-mode screensaver, for tv-restore
+stock_saver() {
+  case "$1" in
+    com.google.android.tvlauncher) echo com.google.android.backdrop/.Backdrop ;;
+    *) echo com.google.android.apps.tv.dreamx/.service.Backdrop ;;
+  esac
+}

@@ -55,7 +55,9 @@ private val COLORS = mapOf(
     "com.tcl.tv" to Color(0xFFD71920),
 )
 
+// The TV's own home: Google TV's, or Android TV's on older TVs (Android 10)
 const val GOOGLE_TV = "com.google.android.apps.tv.launcherx"
+const val ANDROID_TV = "com.google.android.tvlauncher"
 // The apps on the home shelf, in their saved order, then the home's own cards
 fun loadApps(context: Context): List<TvApp> {
     val pm = context.packageManager
@@ -71,10 +73,11 @@ fun shortcuts(context: Context): List<TvApp> {
     val pm = context.packageManager
     val all = TvApp("all", "All apps", null, Color(0xFF1B1D22), null, Shortcut.AllApps)
     // Just in case: the stock home while it is still enabled
-    val googleTv = runCatching { pm.getApplicationInfo(GOOGLE_TV, 0).enabled }.getOrDefault(false).takeIf { it }?.let {
+    val stock = listOf(GOOGLE_TV, ANDROID_TV).firstOrNull { runCatching { pm.getApplicationInfo(it, 0).enabled }.getOrDefault(false) }
+    val googleTv = stock?.let {
         TvApp(
-            "googletv", "Google TV home", null, Color(0xFF1B1D22),
-            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(GOOGLE_TV)
+            "googletv", if (it == GOOGLE_TV) "Google TV" else "Android TV", null, Color(0xFF1B1D22),
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(it)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             Shortcut.GoogleTv,
         )
