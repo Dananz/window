@@ -1,6 +1,7 @@
 package com.dananz.window
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -33,6 +34,28 @@ class HomeButton : AccessibilityService() {
         }
     }
 
+    // While a service filters keys, some Google TV remotes step the volume once per press and a held
+    // volume key never repeats; the volume keys never reach this service, so it can't repeat them
+    // itself. After each volume change the filter steps aside for a few seconds, so a hold right after
+    // a tap repeats as usual (CleanYourTV's volume_pauses_filter, #3723). Home, Input and the gear
+    // reach Window again once the pause ends.
+    private val volume = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            main.removeCallbacks(refilter)
+            main.postDelayed(refilter, VOLUME_PAUSE_MS)
+            filter(false)
+        }
+    }
+    private val refilter = Runnable { filter(true) }
+
+    private fun filter(on: Boolean) {
+        val info = serviceInfo ?: return
+        val now = info.flags and AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS != 0
+        if (now == on) return
+        info.flags = info.flags xor AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        serviceInfo = info
+    }
+
     override fun onKeyEvent(event: KeyEvent): Boolean {
         val panel = when (event.keyCode) {
             KeyEvent.KEYCODE_HOME -> null
@@ -48,6 +71,7 @@ class HomeButton : AccessibilityService() {
     override fun onServiceConnected() {
         Keys.wanted(this, true)
         ContextCompat.registerReceiver(this, wake, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(this, volume, IntentFilter(VOLUME_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
         Prefs.load(this)
         if (SystemClock.elapsedRealtime() < 3 * 60_000) { home(); opening() }
     }
@@ -71,6 +95,7 @@ class HomeButton : AccessibilityService() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(wake) }
+        runCatching { unregisterReceiver(volume) }
         main.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
@@ -88,6 +113,8 @@ class HomeButton : AccessibilityService() {
         const val PANEL = "panel"
         const val PANEL_QUICK = "quick"
         const val PANEL_INPUTS = "inputs"
+        private const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
+        private const val VOLUME_PAUSE_MS = 4_000L
     }
 }
 

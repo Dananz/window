@@ -74,7 +74,8 @@ Notes for Claude, if things go sideways:
   don't reboot: run `scripts/tv-restore.sh`, or `pm enable com.google.android.apps.tv.launcherx` by hand.
 - A TV with a second user: use `--user 0` with `pm`.
 - Held volume or arrows on the remote step only once: the Home button service is in the way (its key
-  filter stops keys repeating on some remotes, a Sony BRAVIA's). If Home already brings Window up with
+  filter stops keys repeating on some remotes, a Sony BRAVIA's). For volume, the service steps aside for
+  4 seconds after each volume change, so a hold right after a tap repeats. If that is not enough, and Home already brings Window up with
   Google TV's home switched off, add `nohomebutton=<serial>` (`adb shell getprop ro.serialno`) to
   local.properties and install again: the scripts then leave the service off on that TV.
 - On a 4K panel Window shows the landscape on a surface of the panel's own size. If the TV's log says
