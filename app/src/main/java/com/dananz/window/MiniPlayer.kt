@@ -213,7 +213,7 @@ fun MiniPlayer(focus: String, dim: Boolean) {
         horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
-            Modifier.ring(focus == PLAYER, 28.dp).clip(RoundedCornerShape(28.dp)).background(Ink.glass).padding(12.dp),
+            Modifier.point(PLAYER).ring(focus == PLAYER, 28.dp).clip(RoundedCornerShape(28.dp)).background(Ink.glass).padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.size(ART_SIZE.dp).clip(RoundedCornerShape(16.dp)).background(Ink.text.copy(alpha = .12f))) {
@@ -226,7 +226,7 @@ fun MiniPlayer(focus: String, dim: Boolean) {
             Icon(if (Player.playing) Glyphs.Pause else Glyphs.Play, null, Modifier.padding(end = 8.dp).size(30.dp), tint = Ink.text)
         }
         Box(
-            Modifier.size(64.dp).ring(focus == PLAYER_NEXT, 32.dp).clip(RoundedCornerShape(32.dp)).background(Ink.glass),
+            Modifier.size(64.dp).point(PLAYER_NEXT).ring(focus == PLAYER_NEXT, 32.dp).clip(RoundedCornerShape(32.dp)).background(Ink.glass),
             contentAlignment = Alignment.Center,
         ) { Icon(Glyphs.Next, null, Modifier.size(26.dp).graphicsLayer { if (Lang.he) scaleX = -1f }, tint = Ink.text) }
     }

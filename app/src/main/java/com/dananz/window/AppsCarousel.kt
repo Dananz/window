@@ -141,6 +141,8 @@ private fun Shelf(apps: List<TvApp>, focused: Int?, rtl: Boolean) {
                         alpha = shown.value
                         compositingStrategy = CompositingStrategy.ModulateAlpha
                     }
+                    // Not the cards faded out at the far ends of the shelf
+                    .point("app-$i", enabled = !active || ao <= 3)
                     // Rounded by drawing the banner as a rounded rect, not by clipping: a clip on a
                     // turned card costs this GPU a mask every frame
                     .drawWithContent {

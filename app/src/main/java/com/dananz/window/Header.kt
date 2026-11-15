@@ -131,7 +131,7 @@ fun PlaceSwitch(place: Place, focused: Boolean, open: Boolean, menuFocus: String
     // As wide as the pin: the list hangs out of it instead of widening the row
     Box(Modifier.width(96.dp)) {
         Row(
-            Modifier.height(96.dp).ring(focused, 22.dp).clip(RoundedCornerShape(22.dp)).background(Ink.glass).padding(horizontal = 34.dp),
+            Modifier.height(96.dp).point("place-btn").ring(focused, 22.dp).clip(RoundedCornerShape(22.dp)).background(Ink.glass).padding(horizontal = 34.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Glyphs.Pin, null, Modifier.size(28.dp), tint = Ink.accent)
@@ -145,13 +145,14 @@ fun PlaceSwitch(place: Place, focused: Boolean, open: Boolean, menuFocus: String
                         alpha = menu.value
                         translationY = -(1 - menu.value) * 12.dp.toPx()
                     }
-                    .width(300.dp).clip(RoundedCornerShape(24.dp)).background(Ink.sheet).padding(12.dp),
+                    // The list's own surface: a click between its rows stays in it
+                    .width(300.dp).point("place-menu").clip(RoundedCornerShape(24.dp)).background(Ink.sheet).padding(12.dp),
             ) {
                 Text(t("View"), Modifier.padding(start = 20.dp, top = 6.dp, bottom = 6.dp), color = Ink.text.copy(alpha = .55f), fontFamily = Golos, fontSize = 16.sp)
                 Place.entries.forEach { p ->
                     val on = p == place
                     Box(
-                        Modifier.fillMaxWidth().height(60.dp).ring(menuFocus == "place-${p.name}", 16.dp)
+                        Modifier.fillMaxWidth().height(60.dp).point("place-${p.name}").ring(menuFocus == "place-${p.name}", 16.dp)
                             .clip(RoundedCornerShape(16.dp)).background(if (on) Color.White.copy(alpha = .06f) else Color.Transparent)
                             .padding(horizontal = 20.dp),
                         contentAlignment = Alignment.CenterStart,
@@ -161,7 +162,7 @@ fun PlaceSwitch(place: Place, focused: Boolean, open: Boolean, menuFocus: String
                 // On: a new place by itself every so often (Window settings sets how often)
                 val shuffling = Prefs.shuffle > 0
                 Row(
-                    Modifier.fillMaxWidth().height(60.dp).ring(menuFocus == "place-shuffle", 16.dp)
+                    Modifier.fillMaxWidth().height(60.dp).point("place-shuffle").ring(menuFocus == "place-shuffle", 16.dp)
                         .clip(RoundedCornerShape(16.dp)).background(if (shuffling) Color.White.copy(alpha = .06f) else Color.Transparent)
                         .padding(horizontal = 20.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -185,7 +186,7 @@ fun Forecast(weather: Weather?, day: Int, focus: String) {
         (weather?.days ?: emptyList()).forEachIndexed { i, d ->
             val on = day == i
             Column(
-                Modifier.size(92.dp, 96.dp).ring(focus == "day-$i", 22.dp).clip(RoundedCornerShape(22.dp))
+                Modifier.size(92.dp, 96.dp).point("day-$i").ring(focus == "day-$i", 22.dp).clip(RoundedCornerShape(22.dp))
                     .background(if (on) Ink.accent.copy(alpha = .26f).compositeOverGlass() else Ink.glass),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),

@@ -184,7 +184,7 @@ private val BOX = RoundedCornerShape(24.dp)
 @Composable
 fun QuickButton(focused: Boolean) {
     Box(
-        Modifier.size(96.dp).ring(focused, 22.dp).clip(RoundedCornerShape(22.dp)).background(Ink.glass),
+        Modifier.size(96.dp).point("qs-btn").ring(focused, 22.dp).clip(RoundedCornerShape(22.dp)).background(Ink.glass),
         contentAlignment = Alignment.Center,
     ) { Icon(Glyphs.Gear, null, Modifier.size(30.dp), tint = Ink.text) }
 }
@@ -207,6 +207,8 @@ fun QuickPanel(open: Boolean, focus: String, tv: TvState) {
                     alpha = shown
                     compositingStrategy = CompositingStrategy.ModulateAlpha
                 }
+                // The panel's own surface: a click between its items stays in it
+                .point("qs-panel")
                 .clip(PANEL)
                 // Solid: nothing shows through it, and an opaque fill is the cheapest for this GPU
                 .background(Color(0xFF131316))
@@ -220,8 +222,8 @@ fun QuickPanel(open: Boolean, focus: String, tv: TvState) {
             }
             VolumeBar(tv, focus == "qs-vol")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InputChip("Window", focus == "qs-in-home", on = true, live = true, Modifier.weight(1f))
-                tv.inputs.forEachIndexed { i, input -> InputChip(input.name, focus == "qs-in-$i", on = false, live = input.connected, Modifier.weight(1f)) }
+                InputChip("qs-in-home", "Window", focus == "qs-in-home", on = true, live = true, Modifier.weight(1f))
+                tv.inputs.forEachIndexed { i, input -> InputChip("qs-in-$i", input.name, focus == "qs-in-$i", on = false, live = input.connected, Modifier.weight(1f)) }
             }
             SETTING_TILES.chunked(2).forEach { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -236,7 +238,7 @@ fun QuickPanel(open: Boolean, focus: String, tv: TvState) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 listOf(Triple("qs-window", "Window settings", Glyphs.Home), Triple("qs-tvset", "TV settings", Glyphs.Tv)).forEach { (id, label, icon) ->
                     Row(
-                        Modifier.weight(1f).height(60.dp).ring(focus == id, 20.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = if (id == "qs-window") .1f else .07f)),
+                        Modifier.weight(1f).height(60.dp).point(id).ring(focus == id, 20.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = if (id == "qs-window") .1f else .07f)),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -255,7 +257,7 @@ private fun VolumeBar(tv: TvState, focused: Boolean) {
     val level = if (tv.muted) 0 else tv.volume
     val fill by animateFloatAsState(level / 100f, settle(Motion.FILL), label = "volume")
     Row(
-        Modifier.fillMaxWidth().height(84.dp).ring(focused, 24.dp).clip(BOX).background(Color.White.copy(alpha = .08f)).padding(horizontal = 20.dp),
+        Modifier.fillMaxWidth().height(84.dp).point("qs-vol").ring(focused, 24.dp).clip(BOX).background(Color.White.copy(alpha = .08f)).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(QuickGlyphs.volume(tv.muted, level), null, Modifier.size(26.dp), tint = Ink.text)
@@ -272,9 +274,9 @@ private fun VolumeBar(tv: TvState, focused: Boolean) {
 }
 
 @Composable
-private fun InputChip(name: String, focused: Boolean, on: Boolean, live: Boolean, modifier: Modifier) {
+private fun InputChip(id: String, name: String, focused: Boolean, on: Boolean, live: Boolean, modifier: Modifier) {
     Box(
-        modifier.height(56.dp).ring(focused, 18.dp).clip(RoundedCornerShape(18.dp)).background(if (on) Ink.accent else Color.White.copy(alpha = .07f)),
+        modifier.height(56.dp).point(id).ring(focused, 18.dp).clip(RoundedCornerShape(18.dp)).background(if (on) Ink.accent else Color.White.copy(alpha = .07f)),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -288,7 +290,7 @@ private fun InputChip(name: String, focused: Boolean, on: Boolean, live: Boolean
 @Composable
 private fun SettingBox(tile: SettingTile, status: String, focused: Boolean, modifier: Modifier) {
     Column(
-        modifier.height(112.dp).ring(focused, 24.dp).clip(BOX).background(Color.White.copy(alpha = .07f)).padding(16.dp),
+        modifier.height(112.dp).point(tile.id).ring(focused, 24.dp).clip(BOX).background(Color.White.copy(alpha = .07f)).padding(16.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = .1f)), contentAlignment = Alignment.Center) {

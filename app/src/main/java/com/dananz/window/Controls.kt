@@ -49,6 +49,8 @@ import androidx.tv.material3.Text
 // OK switches a light or the AC on and off; holding OK opens its big control.
 
 private val TILE = RoundedCornerShape(28.dp)
+// The big control's own surface, for the mouse: a click on it is not a click elsewhere
+const val SHEET = "sheet"
 private val WARM = Color(0xFFFFB35C)
 private val MODE_TINT = mapOf(AcMode.Cool to Color(0xFF9FD4FF), AcMode.Heat to Color(0xFFFFB08A))
 
@@ -93,7 +95,7 @@ fun LightTile(light: Light?, name: String, level: Int, focused: Boolean, open: B
         Sheet(open) {
             // Held: a tall brightness bar rises out of the tile
             Column(
-                Modifier.size(150.dp, 360.dp).offset(x = 7.dp).clip(RoundedCornerShape(34.dp)).background(Ink.sheet).padding(12.dp),
+                Modifier.size(150.dp, 360.dp).offset(x = 7.dp).point(SHEET).clip(RoundedCornerShape(34.dp)).background(Ink.sheet).padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(Glyphs.Up, null, Modifier.size(20.dp), tint = Ink.text.copy(alpha = .6f))
@@ -113,7 +115,7 @@ fun LightTile(light: Light?, name: String, level: Int, focused: Boolean, open: B
             }
         }
         Box(
-            Modifier.size(164.dp, 112.dp).ring(focused, 28.dp, if (open) Ink.accent else Ink.text).clip(TILE).background(Ink.glass)
+            Modifier.size(164.dp, 112.dp).point(if (all) "all-lights" else "light-${light?.id}").ring(focused, 28.dp, if (open) Ink.accent else Ink.text).clip(TILE).background(Ink.glass)
                 .drawBehind {
                     // The tile fills up warm from the bottom, as bright as the light is
                     val h = size.height * fill.value
@@ -140,17 +142,17 @@ fun LightTile(light: Light?, name: String, level: Int, focused: Boolean, open: B
 }
 
 @Composable
-fun AcTile(name: String, ac: Ac, focused: Boolean, open: Boolean, row: Int) {
+fun AcTile(id: String, name: String, ac: Ac, focused: Boolean, open: Boolean, row: Int) {
     val tint = MODE_TINT.getValue(ac.mode)
     val room = ac.room?.let { "${(it * 10).toInt() / 10f}°" } ?: "–"
     Column {
         Sheet(open) {
             // Held: three rows, temperature, mode and fan. Up and down pick the row, left and right change it
-            Column(Modifier.width(420.dp).clip(RoundedCornerShape(34.dp)).background(Ink.sheet).padding(16.dp)) {
+            Column(Modifier.width(420.dp).point(SHEET).clip(RoundedCornerShape(34.dp)).background(Ink.sheet).padding(16.dp)) {
                 @Composable
                 fun line(i: Int, h: Int?, content: @Composable () -> Unit) = Row(
                     Modifier.fillMaxWidth().padding(top = if (i == 0) 0.dp else 8.dp).let { if (h != null) it.height(h.dp) else it }
-                        .ring(row == i, 22.dp, Ink.accent).clip(RoundedCornerShape(22.dp))
+                        .point("acrow-$i").ring(row == i, 22.dp, Ink.accent).clip(RoundedCornerShape(22.dp))
                         .background(if (row == i) Color.White.copy(alpha = .1f) else Color.Transparent).padding(horizontal = 20.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) { content() }
@@ -190,7 +192,7 @@ fun AcTile(name: String, ac: Ac, focused: Boolean, open: Boolean, row: Int) {
             }
         }
         Row(
-            Modifier.size(344.dp, 112.dp).ring(focused, 28.dp, if (open) Ink.accent else Ink.text).clip(TILE)
+            Modifier.size(344.dp, 112.dp).point(id).ring(focused, 28.dp, if (open) Ink.accent else Ink.text).clip(TILE)
                 .background(if (ac.on) Brush.radialGradient(listOf(tint.copy(alpha = .32f), Color.Transparent), radius = 500f, center = androidx.compose.ui.geometry.Offset(30f, 0f)) else Brush.linearGradient(listOf(Ink.glass, Ink.glass)))
                 .background(if (ac.on) Color(0x990E1218) else Color.Transparent)
                 .padding(16.dp),
@@ -252,7 +254,7 @@ fun ControlsRow(room: Room, focus: String, grabbed: String?, acRow: Int, dim: Bo
         ) {
             if (lights.isNotEmpty()) item("all-lights") { LightTile(null, "All lights", if (anyOn) lights.maxOf { it.level } else 0, focus == "all-lights", false, all = true) }
             items(room.lights, key = { "light-${it.id}" }) { l -> LightTile(l, l.name, l.level, focus == "light-${l.id}", grabbed == "light-${l.id}") }
-            items(room.acs, key = { "ac-${it.id}" }) { u -> AcTile(u.name, u.ac, focus == "ac-${u.id}", grabbed == "ac-${u.id}", acRow) }
+            items(room.acs, key = { "ac-${it.id}" }) { u -> AcTile("ac-${u.id}", u.name, u.ac, focus == "ac-${u.id}", grabbed == "ac-${u.id}", acRow) }
         }
     }
 }

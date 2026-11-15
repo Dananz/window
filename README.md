@@ -33,6 +33,9 @@ Built with Kotlin and Compose for TV. Package `com.dananz.window`, Android 10 (A
   Their devices join the same tile list.
 - **Screensaver:** the camera goes through the window and stays on the landscape, with a clock that moves
   every few minutes and a slow drift, to spare OLED panels.
+- **Remote, mouse or keyboard:** point at anything to focus it, click for OK, hold the button to dim a
+  light or set the AC, the wheel to scroll, right click for Back. On a keyboard: arrows, Enter or Space for
+  OK, Escape or Backspace for Back.
 - **Home button:** Google TV ignores a third-party home screen, so an accessibility service catches the
   remote's Home button and brings Window up. `scripts/tv-default.sh` also switches Google TV's home off.
 

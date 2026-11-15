@@ -119,6 +119,8 @@ class AllAppsState(private val context: Context, private val scope: CoroutineSco
     // Favorites changed since the screen opened: the home shelf is rebuilt on the way out
     var shelfChanged = false
     private var hold: Job? = null
+    // Focus set by the pointer: the grid keeps still for it, or the tile under the pointer would scroll away
+    internal var pointed = false
 
     val rest: List<String> get() = order.filter { it !in favs }
 
@@ -141,7 +143,7 @@ class AllAppsState(private val context: Context, private val scope: CoroutineSco
     }
 
     fun show() {
-        menu = null; moving = null; confirm = null; shelfChanged = false
+        menu = null; moving = null; confirm = null; shelfChanged = false; pointed = false
         focus = if (favs.isNotEmpty()) "fav-0" else "all-0"
         open = true
     }
@@ -191,6 +193,7 @@ class AllAppsState(private val context: Context, private val scope: CoroutineSco
     private fun choose(m: AppMenu) {
         val it = items(m.id).getOrNull(m.at) ?: return
         menu = null
+        pointed = false
         when (it.key) {
             "open" -> launch(m.id)
             // The app moves between the two lists, and focus goes with it
@@ -239,7 +242,36 @@ class AllAppsState(private val context: Context, private val scope: CoroutineSco
         if (h.isActive) { h.cancel(); tap(focus) }
     }
 
+    // ---------- The mouse ----------
+
+    // Hover: a dialog button, a menu row, or a tile (not while an app is being moved, which the arrows carry)
+    fun pointTo(id: String) {
+        confirm?.let { c -> if (id.startsWith("confirm-")) confirm = c.copy(at = id.removePrefix("confirm-").toInt()); return }
+        menu?.let { m -> if (id.startsWith("menu-")) menu = m.copy(at = id.removePrefix("menu-").toInt()); return }
+        if (moving != null || hold != null || appAt(id) == null) return
+        pointed = true
+        focus = id
+    }
+
+    // The button down: OK down on what is under it. Outside the open dialog or menu it only closes them;
+    // while an app is being moved, a click anywhere sets it down
+    fun pointDown(id: String) {
+        when {
+            confirm != null -> if (id.startsWith("confirm-")) { pointTo(id); okDown(true) } else if (id != "confirm") confirm = null
+            menu != null -> if (id.startsWith("menu-")) { pointTo(id); okDown(true) } else if (id != "menu") menu = null
+            moving != null -> okDown(true)
+            appAt(id) != null -> { pointed = true; focus = id; okDown(true) }
+        }
+    }
+
+    // The button up: OK up, unless it slid off the tile before the hold (then nothing happens)
+    fun pointUp(inside: Boolean) {
+        if (!inside && moving == null) { hold?.cancel(); hold = null }
+        okUp()
+    }
+
     fun route(dx: Int, dy: Int) {
+        pointed = false
         hold?.cancel(); hold = null
         confirm?.let { if (dx != 0) confirm = it.copy(at = if (dx > 0) 1 else 0); return }
         menu?.let { if (dy != 0) menu = it.copy(at = (it.at + dy).coerceIn(0, items(it.id).lastIndex)); return }
@@ -305,7 +337,10 @@ private fun AllAppsScreen(s: AllAppsState) {
     val kind = s.focus.substringBefore('-')
     val n = s.focus.substringAfter('-').toIntOrNull() ?: 0
     val y = if (kind == "fav" || kind == "all") rowTop(kind, n) else 0f
-    val scrollTarget = max(0f, y - ROW + 40)
+    // Kept where it was while the pointer sets the focus
+    val still = remember { floatArrayOf(0f) }
+    if (!s.pointed) still[0] = max(0f, y - ROW + 40)
+    val scrollTarget = still[0]
     val scroll = animateFloatAsState(scrollTarget, if (LocalHeld.current) steady() else settle(Motion.SHEET), label = "scroll")
 
     // The menu opens beside its app: to the right of it, or to the left near the right edge, level
@@ -447,7 +482,8 @@ private fun Tile(app: TvApp, fid: String, s: AllAppsState, r: Int, c: Int, top: 
                 scaleX = scale.value; scaleY = scale.value
                 translationY = rise.value.dp.toPx()
                 compositingStrategy = CompositingStrategy.ModulateAlpha
-            },
+            }
+            .point(fid),
     ) {
         Box(
             Modifier.size(TILE_W.dp, TILE_H.dp).drawBehind {
@@ -528,6 +564,8 @@ private fun Menu(m: MenuView, at: Int, left: Float, top: Float, side: Float, sho
                 transformOrigin = TransformOrigin(if (side > 0) 0f else 1f, 0f)
             }
             .background(Color(0xEB101012), RoundedCornerShape(36.dp))
+            // The menu's own surface: a click between its rows stays in it
+            .point("menu")
             .padding(20.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -540,7 +578,7 @@ private fun Menu(m: MenuView, at: Int, left: Float, top: Float, side: Float, sho
         }
         Spacer(Modifier.height(20.dp))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            m.items.forEachIndexed { i, it -> MenuRow(it, i == at) }
+            m.items.forEachIndexed { i, it -> MenuRow(it, i, i == at) }
         }
         Spacer(Modifier.height(16.dp))
         Text(
@@ -551,12 +589,12 @@ private fun Menu(m: MenuView, at: Int, left: Float, top: Float, side: Float, sho
 }
 
 @Composable
-private fun MenuRow(it: MenuItem, selected: Boolean) {
+private fun MenuRow(it: MenuItem, i: Int, selected: Boolean) {
     val danger = it.key == "uninstall"
     val bg = animateColorAsState(if (selected) (if (danger) DANGER else Ink.text) else Color.Transparent, settle(Motion.FOCUS), label = "rowBg")
     val fg = animateColorAsState(if (selected) ON_LIGHT else if (danger) DANGER_TEXT else Ink.text, settle(Motion.FOCUS), label = "rowFg")
     Row(
-        Modifier.fillMaxWidth().height(64.dp)
+        Modifier.fillMaxWidth().height(64.dp).point("menu-$i")
             .drawBehind { drawRoundRect(bg.value, cornerRadius = CornerRadius(20.dp.toPx())) }
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -581,6 +619,7 @@ private fun UninstallDialog(app: TvApp, at: Int, shown: androidx.compose.runtime
                 scaleX = k; scaleY = k
             }
             .background(Color(0xF2101012), RoundedCornerShape(40.dp))
+            .point("confirm")
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -601,7 +640,7 @@ private fun UninstallDialog(app: TvApp, at: Int, shown: androidx.compose.runtime
                     settle(Motion.FOCUS), label = "button",
                 )
                 Box(
-                    Modifier.weight(1f).height(64.dp).drawBehind { drawRoundRect(bg.value, cornerRadius = CornerRadius(20.dp.toPx())) },
+                    Modifier.weight(1f).height(64.dp).point("confirm-$i").drawBehind { drawRoundRect(bg.value, cornerRadius = CornerRadius(20.dp.toPx())) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(t(label), color = if (selected) ON_LIGHT else Ink.text, fontFamily = Golos, fontWeight = FontWeight.Medium, fontSize = 20.sp)

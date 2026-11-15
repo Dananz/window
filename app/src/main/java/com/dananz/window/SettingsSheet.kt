@@ -226,6 +226,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
     // ---------- The remote ----------
 
     fun ok() {
+        pointed = false
         val f = focus
         when {
             f.startsWith("sec-") -> enter(f.removePrefix("sec-"))
@@ -256,7 +257,39 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         }
     }
 
+    // ---------- The mouse ----------
+
+    // Focus set by the pointer: the tiles list keeps still for it, or the row under the pointer would scroll away
+    private var pointed = false
+
+    // The id under the pointer takes the focus, when the remote could reach it on the page showing
+    // (the pages sliding away stay composed for a moment, and must not answer)
+    fun pointTo(id: String): Boolean {
+        if (editing != null || moving != null) return false
+        val ids = when (sub) {
+            "tiles" -> tileRows().flatten()
+            "ha" -> haIds()
+            "govee" -> goveeIds()
+            "sensibo" -> sensiboIds()
+            "tuya" -> tuyaIds()
+            null -> if (page != null) section.rows.map { "row-${it.id}" } else SECTIONS.map { "sec-${it.id}" }
+            else -> emptyList()
+        }
+        if (id !in ids) return false
+        pointed = true
+        focus = id
+        return true
+    }
+
+    // A click: OK on the item. While a tile is being moved, any click sets it down, as OK does
+    fun click(id: String) {
+        if (editing != null) return
+        if (moving != null) { ok(); return }
+        if (pointTo(id)) ok()
+    }
+
     fun move(a: Arrow) {
+        pointed = false
         val f = focus
         if (sub == "tiles") return tilesMove(f, a)
         if (sub == "ha") return haMove(f, a)
@@ -286,6 +319,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
 
     // False: closed altogether
     fun back(): Boolean {
+        pointed = false
         if (editing != null) { editing = null; return true }
         if (moving != null) { moving = null; return true }
         if (sub == "ha" && signIn.phase != SignIn.Phase.Idle) { signIn.cancel(); focus = haFirst(); return true }
@@ -301,7 +335,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
     private fun enter(id: String) { page = id; lastPage = id; focus = "row-${SECTIONS.first { it.id == id }.rows.first().id}" }
 
     private fun openSub(id: String) {
-        sub = id; lastSub = id
+        sub = id; lastSub = id; pointed = false
         when (id) {
             "tiles" -> { focus = if (Prefs.tiles.isEmpty()) "tw-type" else "tw-w-0"; loadCatalog() }
             "govee" -> { focus = "gv-key"; note = null }
@@ -546,6 +580,8 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
                         alpha = shown
                         compositingStrategy = CompositingStrategy.ModulateAlpha
                     }
+                    // The sheet's own surface: a click between its rows stays in it
+                    .point("set-panel")
                     .clip(RoundedCornerShape(40.dp)).background(Color(0xFF131316)),
             ) {
                 // Three layers, each sliding in from the far side and pushed a little aside by the next
@@ -585,7 +621,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         SECTIONS.forEach { s ->
             val first = if (s.id == "home") s.rows[1] else s.rows.first { it.kind != RowKind.Action }
             Row(
-                Modifier.fillMaxWidth().height(76.dp).ring(focus == "sec-${s.id}", 22.dp).clip(RoundedCornerShape(22.dp))
+                Modifier.fillMaxWidth().height(76.dp).point("sec-${s.id}").ring(focus == "sec-${s.id}", 22.dp).clip(RoundedCornerShape(22.dp))
                     .background(Color.White.copy(alpha = if (focus == "sec-${s.id}") .12f else .06f)).padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
@@ -617,7 +653,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
     private fun SettingRow(r: Row, focused: Boolean, note: String?) {
         val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 80.dp).ring(focused, 22.dp).clip(RoundedCornerShape(22.dp))
+            Modifier.fillMaxWidth().heightIn(min = 80.dp).point("row-${r.id}").ring(focused, 22.dp).clip(RoundedCornerShape(22.dp))
                 .background(Color.White.copy(alpha = if (focused) .12f else .06f)).padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -673,6 +709,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         // Scroll only when the focused row would leave the view, and only as far as it needs: scrolling the
         // whole list on every press is what made a long list stutter on the TV
         LaunchedEffect(at) {
+            if (pointed) return@LaunchedEffect
             val info = listState.layoutInfo
             val row = info.visibleItemsInfo.firstOrNull { it.index == at }
             val margin = 96
@@ -689,7 +726,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
             item { Text(t("Add from Home Assistant"), Modifier.padding(top = 16.dp), color = Ink.text, fontFamily = Golos, fontWeight = FontWeight.SemiBold, fontSize = 20.sp) }
             item {
                 Row(
-                    Modifier.fillMaxWidth().height(60.dp).ring(focus == "tw-type", 20.dp).clip(RoundedCornerShape(20.dp))
+                    Modifier.fillMaxWidth().height(60.dp).point("tw-type").ring(focus == "tw-type", 20.dp).clip(RoundedCornerShape(20.dp))
                         .background(Color.White.copy(alpha = if (focus == "tw-type") .12f else .06f)).padding(horizontal = 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -707,7 +744,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
         val m = moving == i
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
-                Modifier.weight(1f).heightIn(min = 68.dp).ring(focus == "tw-w-$i", 20.dp).clip(RoundedCornerShape(20.dp))
+                Modifier.weight(1f).heightIn(min = 68.dp).point("tw-w-$i").ring(focus == "tw-w-$i", 20.dp).clip(RoundedCornerShape(20.dp))
                     .background(if (m) Ink.accent else Color.White.copy(alpha = if (focus == "tw-w-$i") .12f else .06f)).padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -724,15 +761,15 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
                     Text(sub, color = ink.copy(alpha = .5f), fontFamily = Golos, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            Round(PhosphorIcons.Bold.PencilSimple, focus == "tw-r-$i")
-            Round(PhosphorIcons.Bold.X, focus == "tw-x-$i")
+            Round(PhosphorIcons.Bold.PencilSimple, "tw-r-$i")
+            Round(PhosphorIcons.Bold.X, "tw-x-$i")
         }
     }
 
     @Composable
     private fun AddRow(i: Int, e: Entity, added: Boolean) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 64.dp).ring(focus == "tw-a-$i", 20.dp).clip(RoundedCornerShape(20.dp))
+            Modifier.fillMaxWidth().heightIn(min = 64.dp).point("tw-a-$i").ring(focus == "tw-a-$i", 20.dp).clip(RoundedCornerShape(20.dp))
                 .background(Color.White.copy(alpha = if (focus == "tw-a-$i") .12f else .04f)).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -748,9 +785,10 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
     }
 
     @Composable
-    private fun Round(icon: ImageVector, focused: Boolean) {
+    private fun Round(icon: ImageVector, id: String) {
+        val focused = focus == id
         Box(
-            Modifier.size(56.dp).ring(focused, 28.dp).clip(CircleShape).background(Color.White.copy(alpha = if (focused) .14f else .06f)),
+            Modifier.size(56.dp).point(id).ring(focused, 28.dp).clip(CircleShape).background(Color.White.copy(alpha = if (focused) .14f else .06f)),
             contentAlignment = Alignment.Center,
         ) { Icon(icon, null, Modifier.size(20.dp), tint = Ink.text) }
     }
@@ -919,7 +957,7 @@ class SettingsState(private val context: Context, private val scope: CoroutineSc
     @Composable
     private fun HaRow(id: String, icon: ImageVector, label: String, value: String? = null, danger: Boolean = false) {
         Row(
-            Modifier.fillMaxWidth().height(72.dp).ring(focus == id, 22.dp).clip(RoundedCornerShape(22.dp))
+            Modifier.fillMaxWidth().height(72.dp).point(id).ring(focus == id, 22.dp).clip(RoundedCornerShape(22.dp))
                 .background(Color.White.copy(alpha = if (focus == id) .12f else .06f)).padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {

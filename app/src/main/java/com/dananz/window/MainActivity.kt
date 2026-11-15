@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -314,6 +315,8 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
         when {
             focus == "qs-btn" -> { tv.refresh(); quickOpen = true; focus = "qs-vol" }
             focus == "all-lights" -> tap(focus)
+            // A switch, fan, cover or scene: not holdable, so OK reaches it here
+            focus.startsWith("light-") && !holdable(focus) -> tap(focus)
             focus == PLAYER_NEXT -> Player.next()
             // Opening the list lands on the view that is showing
             focus == "place-btn" -> if (placeOpen) placeOpen = false else { placeOpen = true; focus = "place-${place.name}" }
@@ -327,6 +330,29 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
             }
         }
     }
+
+    // OK goes down and comes up on a light, the AC or the player (the remote's OK, or the mouse's button):
+    // a press switches it when it comes up, a hold opens its big control, and OK on an open one closes it
+    fun holdDown() {
+        if (hold != null || held) return
+        if (grabbed != null) held = true
+        else {
+            val id = focus
+            hold = scope.launch { delay(450); held = true; open(id) }
+        }
+    }
+    fun holdUp() {
+        val h = hold
+        hold = null
+        when {
+            h != null && h.isActive -> { h.cancel(); tap(focus) }
+            grabbed != null && held && h == null -> { grabbed = null; held = false }
+            else -> held = false
+        }
+    }
+
+    // OK in quick settings
+    fun quickOkNow() { when (focus) { "qs-window" -> settings.show(); "qs-saver" -> settings.preview = true; else -> quickOk(tv, focus) } }
 
     // Back from All apps lands on its card; changed favorites are on the shelf already, from the
     // apps in memory (the banners are read again when Window next comes back)
@@ -351,6 +377,145 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
         if (!rows.any { focus in it } || focus.startsWith("app-")) focus = above.takeIf { a -> rows.any { a in it } } ?: rows.first().first()
     }
 
+    // Back, whichever screen is up (the remote's Back, Escape, or the mouse's right button)
+    fun goBack() {
+        when {
+            settings.preview -> settings.preview = false
+            settings.editing != null -> settings.back()
+            settings.open -> if (!settings.back()) focus = "qs-window"
+            quickOpen -> { quickOpen = false; focus = "qs-btn" }
+            all.open -> if (all.back()) closeAll()
+            grabbed != null -> grabbed = null
+            // Back closes what is open; from the apps it goes back up to where the remote came from
+            placeOpen -> { placeOpen = false; focus = "place-btn" }
+            focus.startsWith("app-") -> focus = above.takeIf { a -> rows.any { a in it } } ?: rows.first().first()
+        }
+    }
+    // When Back last came from the mouse, and from a key: a right click may also reach Window as the
+    // Back key, and must act once. Only a mouse and a key pair up, so the remote's own presses never do
+    val backAt = remember { longArrayOf(-1000L, -1000L) }
+
+    // The mouse, routed to what the remote would do on the same item
+    val pointer = remember { PointerHub() }
+    // The press that only let go of an open control, or only brought a card to the front: its release does nothing more
+    val pressSkip = remember { booleanArrayOf(false) }
+    fun pointHome(id: String) {
+        if (rows.none { id in it }) return
+        focus = id
+        if (id.startsWith("day-")) day = id.removePrefix("day-").toInt()
+    }
+    val pointing = object : Pointing {
+        override fun hover(id: String) {
+            when {
+                settings.preview -> {}
+                settings.open -> settings.pointTo(id)
+                quickOpen -> if (quickRows(tv).any { id in it }) focus = id
+                all.open -> all.pointTo(id)
+                // While a control is open the arrows change it: the pointer picks the AC's row and nothing else
+                grabbed != null -> if (id.startsWith("acrow-")) acRow = id.removePrefix("acrow-").toInt()
+                hold != null || held -> {}
+                // The list stays open until a click, as with the remote
+                placeOpen -> if (id in menu || id == "place-btn") focus = id
+                // The raised shelf centres its focus: a card that slid under a resting pointer would take
+                // the focus and slide again, so side cards wait for a click. Nothing else takes it either, or
+                // the pointer on its way up from the rest row would cross the tiles and drop the shelf
+                focus.startsWith("app-") -> {}
+                else -> pointHome(id)
+            }
+        }
+        override fun press(id: String) {
+            pressSkip[0] = false
+            when {
+                settings.open -> settings.pointTo(id)
+                quickOpen -> hover(id)
+                all.open -> all.pointDown(id)
+                grabbed != null -> when {
+                    id == grabbed -> holdDown()
+                    id == SHEET -> pressSkip[0] = true
+                    id.startsWith("acrow-") -> { acRow = id.removePrefix("acrow-").toInt(); pressSkip[0] = true }
+                    // A click elsewhere only lets go of the open control
+                    else -> { grabbed = null; held = false; pressSkip[0] = true; pointHome(id) }
+                }
+                hold != null || held -> pressSkip[0] = true
+                placeOpen && id == "place-menu" -> pressSkip[0] = true
+                placeOpen && id !in menu && id != "place-btn" -> { placeOpen = false; pointHome(id); pressSkip[0] = true }
+                // On the raised shelf a click on another card brings it to the front, and one off the shelf
+                // only takes the focus there
+                focus.startsWith("app-") && id != focus -> { pointHome(id); pressSkip[0] = true }
+                else -> {
+                    if (id in menu) focus = id else pointHome(id)
+                    if (focus == id && holdable(id)) holdDown()
+                }
+            }
+        }
+        override fun release(id: String, inside: Boolean) {
+            if (pressSkip[0]) { pressSkip[0] = false; return }
+            when {
+                settings.preview -> {}
+                settings.open -> if (inside) settings.click(id)
+                quickOpen -> if (inside && focus == id) quickOkNow()
+                all.open -> all.pointUp(inside)
+                hold != null || held || grabbed != null -> {
+                    // Let go outside the item before the hold: nothing, as a press that changed its mind
+                    val h = hold
+                    if (!inside && h != null && h.isActive) { h.cancel(); hold = null } else holdUp()
+                }
+                inside && focus == id -> ok()
+            }
+        }
+        override fun wheel(dx: Int, dy: Int) {
+            if (settings.preview || settings.editing != null) return
+            val sy = Integer.signum(dy)
+            val sx = Integer.signum(dx)
+            val n = if (dy != 0) kotlin.math.abs(dy) else kotlin.math.abs(dx)
+            repeat(n) {
+                when {
+                    settings.open -> if (sy != 0) settings.move(if (sy > 0) Arrow.Down else Arrow.Up)
+                    quickOpen -> if (sy != 0) focus = quickMove(quickRows(tv), focus, sy, across = false)
+                    all.open -> if (sy != 0) all.route(0, sy) else all.route(if (rtl) -sx else sx, 0)
+                    // Up (or to the right) brightens a light; on the AC it changes the row's value, warmer up
+                    grabbed != null -> {
+                        val ac = room.acUnit(grabbed!!) != null
+                        adjust(when {
+                            sy < 0 -> if (ac) Dir.Right else Dir.Up
+                            sy > 0 -> if (ac) Dir.Left else Dir.Down
+                            sx > 0 -> Dir.Right
+                            else -> Dir.Left
+                        })
+                    }
+                    // Along the shelf: down goes on to the next app the way the shelf reads (from the right in
+                    // Hebrew); a sideways wheel goes the way it is pushed on screen
+                    focus.startsWith("app-") -> move(when {
+                        sy > 0 -> if (rtl) Dir.Left else Dir.Right
+                        sy < 0 -> if (rtl) Dir.Right else Dir.Left
+                        sx > 0 -> Dir.Right
+                        else -> Dir.Left
+                    })
+                }
+            }
+        }
+        override fun back() {
+            val t = SystemClock.uptimeMillis()
+            if (t - backAt[1] < 400) return
+            backAt[0] = t
+            goBack()
+        }
+        // A click on the background lets go of an open control, and closes the place list
+        override fun miss() {
+            when {
+                settings.open || quickOpen || all.open -> {}
+                grabbed != null -> { hold?.cancel(); hold = null; held = false; grabbed = null }
+                placeOpen -> { placeOpen = false; focus = "place-btn" }
+            }
+        }
+        override fun anyPress(): Boolean {
+            if (!settings.preview) return false
+            settings.preview = false
+            return true
+        }
+    }
+    SideEffect { pointer.target = pointing }
+
     val appIndex = focus.takeIf { it.startsWith("app-") }?.removePrefix("app-")?.toIntOrNull()
     // Typing in a settings field: the keys go to the keyboard, then back to the remote
     LaunchedEffect(settings.editing) { if (settings.editing == null) runCatching { root.requestFocus() } }
@@ -362,8 +527,14 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
             .fillMaxSize()
             .focusRequester(root)
             .focusable()
+            .pointerRoot(pointer)
             .onPreviewKeyEvent { e ->
-                val isOk = e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter
+                // Tab would walk Compose's focus off the root, where the keys no longer reach Window
+                if (e.key == Key.Tab) return@onPreviewKeyEvent true
+                // A keyboard: Space is OK and Backspace is Back, except in a field being typed in
+                val typing = settings.editing != null
+                val isOk = e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter || (e.key == Key.Spacebar && !typing)
+                val isBack = e.key == Key.Back || e.key == Key.Escape || (e.key == Key.Backspace && !typing)
                 val isArrow = e.key == Key.DirectionLeft || e.key == Key.DirectionRight || e.key == Key.DirectionUp || e.key == Key.DirectionDown
                 // A held arrow steps at its own pace, whatever rate the remote repeats at
                 if (isArrow) {
@@ -380,14 +551,19 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
                 }
                 // Back is acted on as it goes down; its way up is kept here too, or Android takes it
                 // as Back for the whole app and sends Window behind Google TV's home
-                if ((e.key == Key.Back || e.key == Key.Escape) && e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
+                if (isBack && e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
+                if (isBack) {
+                    val t = SystemClock.uptimeMillis()
+                    if (t - backAt[0] < 400) return@onPreviewKeyEvent true
+                    backAt[1] = t
+                }
                 // The screensaver's preview: any key ends it
                 if (settings.preview) {
                     if (e.type == KeyEventType.KeyDown) settings.preview = false
                     return@onPreviewKeyEvent true
                 }
                 if (settings.editing != null) {
-                    if (e.key == Key.Back || e.key == Key.Escape) { settings.back(); return@onPreviewKeyEvent true }
+                    if (isBack) { goBack(); return@onPreviewKeyEvent true }
                     return@onPreviewKeyEvent false
                 }
                 if (settings.open) {
@@ -398,7 +574,7 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
                         e.key == Key.DirectionUp -> settings.move(Arrow.Up)
                         e.key == Key.DirectionDown -> settings.move(Arrow.Down)
                         isOk -> if (e.nativeKeyEvent.repeatCount == 0) settings.ok()
-                        e.key == Key.Back || e.key == Key.Escape -> if (!settings.back()) focus = "qs-window"
+                        isBack -> goBack()
                         else -> return@onPreviewKeyEvent false
                     }
                     return@onPreviewKeyEvent true
@@ -412,8 +588,8 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
                         e.key == Key.DirectionRight -> focus = quickMove(rows, focus, if (rtl) -1 else 1, across = true)
                         e.key == Key.DirectionUp -> focus = quickMove(rows, focus, -1, across = false)
                         e.key == Key.DirectionDown -> focus = quickMove(rows, focus, 1, across = false)
-                        isOk -> when (focus) { "qs-window" -> settings.show(); "qs-saver" -> settings.preview = true; else -> quickOk(tv, focus) }
-                        e.key == Key.Back || e.key == Key.Escape -> { quickOpen = false; focus = "qs-btn" }
+                        isOk -> if (e.nativeKeyEvent.repeatCount == 0) quickOkNow()
+                        isBack -> goBack()
                         else -> return@onPreviewKeyEvent false
                     }
                     return@onPreviewKeyEvent true
@@ -426,67 +602,48 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
                         return@onPreviewKeyEvent true
                     }
                     if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
-                    when (e.key) {
-                        Key.DirectionLeft -> all.route(if (rtl) 1 else -1, 0)
-                        Key.DirectionRight -> all.route(if (rtl) -1 else 1, 0)
-                        Key.DirectionUp -> all.route(0, -1)
-                        Key.DirectionDown -> all.route(0, 1)
-                        Key.Back, Key.Escape -> if (all.back()) closeAll()
+                    when {
+                        e.key == Key.DirectionLeft -> all.route(if (rtl) 1 else -1, 0)
+                        e.key == Key.DirectionRight -> all.route(if (rtl) -1 else 1, 0)
+                        e.key == Key.DirectionUp -> all.route(0, -1)
+                        e.key == Key.DirectionDown -> all.route(0, 1)
+                        isBack -> goBack()
                         else -> return@onPreviewKeyEvent false
                     }
                     return@onPreviewKeyEvent true
                 }
                 // Press or hold on the room's controls: decided when OK comes back up
                 if (isOk && (holdable(focus) || grabbed != null || hold != null)) {
-                    if (e.type == KeyEventType.KeyDown) {
-                        if (e.nativeKeyEvent.repeatCount == 0 && hold == null && !held) {
-                            if (grabbed != null) held = true
-                            else {
-                                val id = focus
-                                hold = scope.launch { delay(450); held = true; open(id) }
-                            }
-                        }
-                    } else if (e.type == KeyEventType.KeyUp) {
-                        val h = hold
-                        hold = null
-                        when {
-                            h != null && h.isActive -> { h.cancel(); tap(focus) }
-                            grabbed != null && held && h == null -> { grabbed = null; held = false }
-                            else -> held = false
-                        }
-                    }
+                    if (e.type == KeyEventType.KeyDown) { if (e.nativeKeyEvent.repeatCount == 0) holdDown() }
+                    else if (e.type == KeyEventType.KeyUp) holdUp()
                     return@onPreviewKeyEvent true
                 }
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (grabbed != null) {
-                    when (e.key) {
-                        Key.DirectionLeft -> adjust(Dir.Left)
-                        Key.DirectionRight -> adjust(Dir.Right)
-                        Key.DirectionUp -> adjust(Dir.Up)
-                        Key.DirectionDown -> adjust(Dir.Down)
-                        Key.Back, Key.Escape -> grabbed = null
+                    when {
+                        e.key == Key.DirectionLeft -> adjust(Dir.Left)
+                        e.key == Key.DirectionRight -> adjust(Dir.Right)
+                        e.key == Key.DirectionUp -> adjust(Dir.Up)
+                        e.key == Key.DirectionDown -> adjust(Dir.Down)
+                        isBack -> goBack()
                         else -> return@onPreviewKeyEvent false
                     }
                     return@onPreviewKeyEvent true
                 }
-                when (e.key) {
-                    Key.DirectionLeft -> move(Dir.Left)
-                    Key.DirectionRight -> move(Dir.Right)
-                    Key.DirectionUp -> move(Dir.Up)
-                    Key.DirectionDown -> move(Dir.Down)
+                when {
+                    e.key == Key.DirectionLeft -> move(Dir.Left)
+                    e.key == Key.DirectionRight -> move(Dir.Right)
+                    e.key == Key.DirectionUp -> move(Dir.Up)
+                    e.key == Key.DirectionDown -> move(Dir.Down)
                     // Once per press: OK held down repeats, and would switch the lights back and forth
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> if (e.nativeKeyEvent.repeatCount == 0) ok()
-                    // Back closes what is open; from the apps it goes back up to where the remote came from
-                    Key.Back, Key.Escape -> when {
-                        placeOpen -> { placeOpen = false; focus = "place-btn" }
-                        focus.startsWith("app-") -> focus = above.takeIf { a -> rows.any { a in it } } ?: rows.first().first()
-                    }
+                    isOk -> if (e.nativeKeyEvent.repeatCount == 0) ok()
+                    isBack -> goBack()
                     else -> return@onPreviewKeyEvent false
                 }
                 true
             },
     ) {
-        CompositionLocalProvider(LocalHeld provides arrowHeld) {
+        CompositionLocalProvider(LocalHeld provides arrowHeld, LocalPointer provides pointer) {
         // The room photo and the camera never mirror
         if ("scene" !in Off.parts) HomeScene(room.lights.associate { it.id to it.level }, sky, night, if (Prefs.reduced) "rest" else viewFor(focus), place, dim = appIndex != null || all.open || quickOpen,
             // Along the shelf the room drifts with the focused app, so moving between apps isn't static
@@ -496,6 +653,9 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
         CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
         // Laid out in its own box, so the header and the rows take the language's direction
         Box(Modifier.fillMaxSize()) {
+        // First, under the header and the player: its row is a list the size of the room above it, and
+        // would take the mouse from everything drawn before it
+        if ("controls" !in Off.parts && Prefs.wall) ControlsRow(room, focus, grabbed, acRow, dim = appIndex != null)
         val headerAlpha = animateFloatAsState(if (appIndex != null) .55f else 1f, glide(Motion.DIM), label = "header")
         if ("header" !in Off.parts) Box(Modifier.graphicsLayer { compositingStrategy = CompositingStrategy.ModulateAlpha; alpha = headerAlpha.value }) { Clock(now, today, weather, day) }
         Row(
@@ -508,7 +668,6 @@ fun Home(apps: List<TvApp>, resumes: Int, panel: Pair<String, Int>?, homes: Int,
             Forecast(weather, day, focus)
         }
         MiniPlayer(focus, dim = appIndex != null)
-        if ("controls" !in Off.parts && Prefs.wall) ControlsRow(room, focus, grabbed, acRow, dim = appIndex != null)
         if (apps.isNotEmpty() && "apps" !in Off.parts) AppsCarousel(apps, appIndex.takeUnless { all.open })
         AllApps(all)
         QuickPanel(quickOpen && !settings.open, focus, tv)
