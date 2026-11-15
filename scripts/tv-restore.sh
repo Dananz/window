@@ -19,6 +19,7 @@ sh cmd package set-home-activity --user 0 "$(sh cmd package resolve-activity --b
 sh settings put secure screensaver_components com.google.android.apps.tv.dreamx/.service.Backdrop
 sh input keyevent KEYCODE_HOME
 # Read back: both on, and Home on Google TV's home
+failed=
 for p in $STOCK $SETUP; do
   sh pm list packages --user 0 -d $p | tr -d '\r' | grep -qx "package:$p" && { echo "Still off: $p" >&2; failed=1; }
 done

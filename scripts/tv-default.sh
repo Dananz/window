@@ -44,7 +44,7 @@ sh settings put secure screensaver_enabled 1
 home="$(sh cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tr -d '\r' | tail -n 1)"
 sh input keyevent KEYCODE_HOME
 sleep 2
-focus="$(sh dumpsys activity activities | tr -d '\r' | grep -m1 mFocusedApp)"
+focus="$(sh dumpsys activity activities | tr -d '\r' | grep -m1 mFocusedApp || true)"
 echo "Home: $home"
 echo "$focus"
 case "$home $focus" in
