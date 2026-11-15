@@ -21,13 +21,14 @@ if ! sh pm list packages --user 0 -e $STOCK | tr -d '\r' | grep -qx "package:$ST
 fi
 has $SETUP && sh pm enable $SETUP
 sh cmd package set-home-activity --user 0 "$(sh cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME $STOCK | tail -n 1 | tr -d '\r')"
-sh settings put secure screensaver_components "$(stock_saver $STOCK)"
+saver=$(stock_saver)
+if [ -n "$saver" ]; then sh settings put secure screensaver_components "$saver"; else sh settings delete secure screensaver_components; fi
 sh input keyevent KEYCODE_HOME
 # Read back: both on, and Home on Google TV's home
 failed=
 has $SETUP || SETUP=""
 for p in $STOCK $SETUP; do
-  sh pm list packages --user 0 -d $p | tr -d '\r' | grep -qx "package:$p" && { echo "Still off: $p" >&2; failed=1; }
+  sh pm list packages --user 0 -e $p | tr -d '\r' | grep -qx "package:$p" || { echo "Still off: $p" >&2; failed=1; }
 done
 home="$(sh cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tr -d '\r' | tail -n 1)"
 echo "Home: $home"

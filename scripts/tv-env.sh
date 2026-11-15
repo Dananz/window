@@ -24,10 +24,11 @@ stock_home() {
   return 0
 }
 
-# Its ambient-mode screensaver, for tv-restore
+# The TV's own ambient-mode screensaver, for tv-restore: Google TV's or Android TV's; nothing when neither
 stock_saver() {
-  case "$1" in
-    com.google.android.tvlauncher) echo com.google.android.backdrop/.Backdrop ;;
-    *) echo com.google.android.apps.tv.dreamx/.service.Backdrop ;;
-  esac
+  pkgs=$(adb -s "$TV" shell pm list packages --user 0 | tr -d '\r')
+  for c in com.google.android.apps.tv.dreamx/.service.Backdrop com.google.android.backdrop/.Backdrop; do
+    if printf '%s\n' "$pkgs" | grep -qx "package:${c%%/*}"; then echo "$c"; return 0; fi
+  done
+  return 0
 }

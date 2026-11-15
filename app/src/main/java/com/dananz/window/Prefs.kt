@@ -97,11 +97,12 @@ object Prefs {
 // The TV's own screensaver settings, which Window changes with WRITE_SECURE_SETTINGS and
 // WRITE_SETTINGS (both granted over adb by the install script)
 object Saver {
-    // Switched off, the TV's own ambient mode: Google TV's, or Android TV's on older TVs
-    private const val GOOGLE = "com.google.android.apps.tv.dreamx/.service.Backdrop"
-    private const val ANDROID_TV = "com.google.android.backdrop/.Backdrop"
-    private fun stock(context: Context) =
-        if (runCatching { context.packageManager.getApplicationInfo("com.google.android.apps.tv.dreamx", 0) }.isSuccess) GOOGLE else ANDROID_TV
+    // Switched off, the TV's own ambient mode: Google TV's, or Android TV's on older TVs; with neither,
+    // the setting is cleared and the TV falls back to its own default screensaver
+    private fun stock(context: Context): String? = listOf(
+        "com.google.android.apps.tv.dreamx/.service.Backdrop",
+        "com.google.android.backdrop/.Backdrop",
+    ).firstOrNull { c -> runCatching { context.packageManager.getApplicationInfo(c.substringBefore('/'), 0) }.isSuccess }
     private fun me(context: Context) = ComponentName(context, Screensaver::class.java).flattenToString()
 
     // The setting can hold the short form (com.dananz.window/.Screensaver, from the scripts) or the long one
