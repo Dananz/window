@@ -16,8 +16,8 @@ android {
         applicationId = "com.dananz.window"
         minSdk = 29
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.0.4"
+        versionCode = 7
+        versionName = "1.0.5"
         buildConfigField("String", "HA_URL", "\"${local.getProperty("ha.url", "")}\"")
         buildConfigField("String", "HA_TOKEN", "\"${local.getProperty("ha.token", "")}\"")
     }
